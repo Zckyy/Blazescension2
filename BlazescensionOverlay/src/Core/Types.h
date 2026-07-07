@@ -48,6 +48,8 @@ struct UnitSnapshot {
     float speed = 0.0f;
     Vec3 position{};
     bool hasPosition = false;
+    char name[48] = {};
+    bool hasName = false;
 };
 
 struct CameraSnapshot {

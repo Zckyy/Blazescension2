@@ -82,6 +82,11 @@ void unitSummary(const Core::UnitSnapshot& unit) {
         return;
     }
 
+    if (unit.hasName && unit.name[0] != '\0') {
+        ImGui::SameLine();
+        ImGui::TextColored(kAccent, "%s", unit.name);
+    }
+
     ImGui::Text("Level %u", unit.level);
 
     const float healthFrac = unit.maxHealth ? std::clamp(static_cast<float>(unit.health) / unit.maxHealth, 0.0f, 1.0f) : 0.0f;
@@ -200,8 +205,15 @@ void drawMenu(Core::AppConfig& config, const Core::GameSnapshot& snapshot) {
             ImGui::Checkbox("Target snap line", &config.showTargetLine);
             ImGui::Checkbox("Focus box", &config.showFocusBox);
             ImGui::Checkbox("Mouseover box", &config.showMouseoverBox);
+            ImGui::Checkbox("Unit names", &config.showUnitNames);
             ImGui::Checkbox("Status panel", &config.showStatusPanel);
             ImGui::Checkbox("Debug panel", &config.showDebugPanel);
+            ImGui::Spacing();
+            ImGui::Checkbox("Local player circle", &config.showLocalPlayerCircle);
+            ImGui::Checkbox("Target circle", &config.showTargetCircle);
+            if (config.showLocalPlayerCircle || config.showTargetCircle) {
+                ImGui::SliderFloat("Circle radius (yd)", &config.circleRadius, 0.30f, 8.0f, "%.2f");
+            }
             ImGui::Spacing();
             ImGui::Checkbox("Nearby NPC boxes", &config.showNpcBoxes);
             ImGui::Checkbox("Nearby player boxes", &config.showOtherPlayerBoxes);

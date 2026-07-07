@@ -19,7 +19,22 @@ constexpr uint32_t CommentatorCameraFov = 0x6CE4E4;
 constexpr uint32_t TargetGuid = 0x7D07B0;
 constexpr uint32_t FocusGuid = 0x7D07D0;
 constexpr uint32_t MouseoverGuid = 0x7D07A0;
+
+// Player name cache DB (unk_C5D938). GUID-keyed hash with the same bucket
+// layout as the object manager; resolved by sub_67D770/sub_6792E0.
+constexpr uint32_t PlayerNameStore = 0x85D938;
 } // namespace rva
+
+namespace nameStore {
+// Offsets into the name-cache DB struct (same shape as the object manager).
+constexpr uint32_t HashBase = 0x1C; // this[7]
+constexpr uint32_t HashMask = 0x24; // this[9]
+// Offsets into a resolved name record (sub_6792E0 match + sub_67D770 read).
+constexpr uint32_t RecordGuidLow = 0x18;
+constexpr uint32_t RecordGuidHigh = 0x1C;
+constexpr uint32_t RecordName = 0x20;  // inline null-terminated string
+constexpr uint32_t RecordValid = 0x178; // byte: entry populated
+} // namespace nameStore
 
 namespace teb {
 constexpr uint32_t TlsSlots = 0x2C;
@@ -51,6 +66,10 @@ namespace obj {
 constexpr uint32_t TypeInfoPtr = 0x08;
 constexpr uint32_t DescriptorPtr = 0xD0;
 constexpr uint32_t MovementPtr = 0xD8;
+// Creature name chain: *(object + 0x964) -> +0x5C -> char* (sub_72A000
+// creature path). Non-player units only.
+constexpr uint32_t NpcNameCache = 0x964;
+constexpr uint32_t NpcNamePtr = 0x5C;
 constexpr uint32_t CachedHealth = 0xFB0;
 constexpr uint32_t CachedPower = 0xFB4;
 } // namespace obj

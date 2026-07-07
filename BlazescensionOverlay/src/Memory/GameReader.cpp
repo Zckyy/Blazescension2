@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <vector>
 #include <tlhelp32.h>
 #include <winternl.h>
@@ -371,7 +372,86 @@ bool GameReader::readUnitFromObject(uint32_t object, Core::UnitRelation relation
         out.hasPosition = finite3(out.position);
     }
 
+    // Players resolve names from the GUID name cache; every other unit uses
+    // the creature-name pointer chain hung off the object.
+    const uint32_t typeInfo = m_memory.read<uint32_t>(object + Offsets::obj::TypeInfoPtr);
+    const uint32_t typeMask = typeInfo ? m_memory.read<uint32_t>(typeInfo + Offsets::typeinfo::TypeMask) : 0;
+    if ((typeMask & Offsets::typeinfo::MaskPlayer) != 0) {
+        out.hasName = readPlayerName(out.guid, out.name, sizeof(out.name));
+    } else {
+        out.hasName = readNpcName(object, out.name, sizeof(out.name));
+    }
+
     return true;
+}
+
+bool GameReader::readCString(uint32_t address, char* out, size_t outSize) {
+    if (!address || outSize == 0) {
+        return false;
+    }
+
+    char buf[48] = {};
+    const size_t want = outSize < sizeof(buf) ? outSize : sizeof(buf);
+    if (!m_memory.readRaw(address, buf, want)) {
+        return false;
+    }
+    buf[want - 1] = '\0';
+
+    size_t len = 0;
+    while (len < want - 1 && buf[len] != '\0') {
+        // Reject non-printable bytes; a valid name is plain ASCII.
+        if (static_cast<unsigned char>(buf[len]) < 0x20) {
+            break;
+        }
+        ++len;
+    }
+    if (len == 0) {
+        return false;
+    }
+
+    std::memcpy(out, buf, len);
+    out[len] = '\0';
+    return true;
+}
+
+bool GameReader::readPlayerName(Core::Guid64 guid, char* out, size_t outSize) {
+    if (!guid.valid()) {
+        return false;
+    }
+
+    const uint32_t db = m_memory.moduleBase() + Offsets::rva::PlayerNameStore;
+    const uint32_t hashBase = m_memory.read<uint32_t>(db + Offsets::nameStore::HashBase);
+    const uint32_t mask = m_memory.read<uint32_t>(db + Offsets::nameStore::HashMask);
+    if (!hashBase || mask == 0xFFFFFFFF) {
+        return false;
+    }
+
+    const uint32_t bucket = 12u * (guid.low & mask);
+    uint32_t entry = m_memory.read<uint32_t>(hashBase + bucket + 8);
+    const uint32_t delta = m_memory.read<uint32_t>(hashBase + bucket);
+
+    for (int guard = 0; entry && !(entry & 1) && guard < 100000; ++guard) {
+        if (m_memory.read<uint32_t>(entry) == guid.low &&
+            m_memory.read<uint32_t>(entry + Offsets::nameStore::RecordGuidLow) == guid.low &&
+            m_memory.read<uint32_t>(entry + Offsets::nameStore::RecordGuidHigh) == guid.high) {
+            if (m_memory.read<uint8_t>(entry + Offsets::nameStore::RecordValid) == 0) {
+                return false;
+            }
+            return readCString(entry + Offsets::nameStore::RecordName, out, outSize);
+        }
+        entry = m_memory.read<uint32_t>(entry + delta + 4);
+    }
+
+    return false;
+}
+
+bool GameReader::readNpcName(uint32_t object, char* out, size_t outSize) {
+    const uint32_t cache = m_memory.read<uint32_t>(object + Offsets::obj::NpcNameCache);
+    const uint32_t namePtr = cache ? m_memory.read<uint32_t>(cache + Offsets::obj::NpcNamePtr) : 0;
+    if (!namePtr) {
+        return false;
+    }
+    return readCString(namePtr, out, outSize);
 }
 
 void GameReader::scanNearbyUnits(

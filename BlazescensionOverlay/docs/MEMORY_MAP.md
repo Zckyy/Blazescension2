@@ -87,6 +87,7 @@ sources.
 | Object `+0x08` | Type-info pointer (see Object Enumeration below) |
 | Object `+0xD0` | Descriptor pointer |
 | Object `+0xD8` | Movement pointer |
+| Object `+0x964` | Creature name cache pointer (see Unit Names below) |
 | Object `+0xFB0` | Cached/display health |
 | Object `+0xFB4 + 4 * powerType` | Cached/display power |
 | Descriptor `+0x47` | Current power type |
@@ -163,6 +164,57 @@ default 4 Hz) independent of the main `pollHz`, and results are cached
 between scans. Distance filtering happens during the walk itself (skip before
 the descriptor read, not after) to avoid the cost of resolving stats for
 units that will be discarded.
+
+## Unit Names
+
+Reversed from the Lua `UnitName` handler (`sub_60E740` → `sub_4FD0E0` →
+`sub_72A000`). Names are resolved differently for players and creatures.
+
+### Players
+
+Player names live in a GUID-keyed name-cache DB at the static struct
+`unk_C5D938` (RVA `0x85D938`). The DB uses the **same bucket layout as the
+object manager** (`sub_6792E0` is structurally identical to `sub_4D4BB0`):
+
+```text
+db       = moduleBase + 0x85D938
+hashBase = *(db + 0x1C)
+mask     = *(db + 0x24)
+bucket   = 12 * (guidLow & mask)
+entry    = *(hashBase + bucket + 8)
+delta    = *(hashBase + bucket)
+
+while entry != 0 and (entry & 1) == 0:
+    if *(entry + 0x00) == guidLow and
+       *(entry + 0x18) == guidLow and
+       *(entry + 0x1C) == guidHigh:
+        if *(byte)(entry + 0x178) != 0:      # record populated
+            name = cstring at (entry + 0x20) # inline, null-terminated
+        break
+    entry = *(entry + delta + 4)
+```
+
+`sub_67D770` returns `record + 0x20` (the inline name string) once the
+`+0x178` valid byte is set; `UnitName` pushes exactly that pointer to Lua.
+There is a parallel creature-name DB at `unk_C5DB58` keyed by
+`*(descriptor + 0x114)` with the name at `record + 0x18`, but the overlay
+uses the simpler object chain below for creatures instead.
+
+### Creatures / NPCs
+
+`sub_72A000`'s creature fallback path reads the name straight off the object:
+
+```asm
+mov esi, [esi+964h]   ; object + 0x964 -> creature name cache
+mov eax, [esi+5Ch]    ; +0x5C -> char*
+```
+
+so `name = cstring at *(*(object + 0x964) + 0x5C)`. This is the widely-used
+external creature-name chain and avoids re-walking the creature-name DB.
+
+`GameReader::readUnitFromObject` picks the source by object type: units with
+the `Player` type bit (`0x10`) use the player name cache, everything else
+uses the `0x964` chain.
 
 ## Camera
 

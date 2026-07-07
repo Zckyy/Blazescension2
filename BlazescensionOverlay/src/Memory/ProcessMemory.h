@@ -43,6 +43,18 @@ public:
         return value;
     }
 
+    bool readRaw(uint32_t address, void* buffer, size_t size) const {
+        SIZE_T got = 0;
+        return m_process != nullptr && address != 0 &&
+               ReadProcessMemory(
+                   m_process,
+                   reinterpret_cast<LPCVOID>(static_cast<uintptr_t>(address)),
+                   buffer,
+                   size,
+                   &got) &&
+               got == size;
+    }
+
 private:
     static void enableDebugPrivilege();
     static bool findProcess(const wchar_t* processName, uint32_t& pid);

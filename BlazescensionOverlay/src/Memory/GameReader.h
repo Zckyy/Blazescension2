@@ -30,6 +30,9 @@ private:
     bool readLocalPlayer(uint32_t curMgr, Core::UnitSnapshot& out);
     bool readCamera(Core::CameraSnapshot& out);
     bool readUnitFromObject(uint32_t object, Core::UnitRelation relation, Core::UnitSnapshot& out);
+    bool readCString(uint32_t address, char* out, size_t outSize);
+    bool readPlayerName(Core::Guid64 guid, char* out, size_t outSize);
+    bool readNpcName(uint32_t object, char* out, size_t outSize);
     void scanNearbyUnits(
         uint32_t curMgr,
         const Core::Vec3& origin,

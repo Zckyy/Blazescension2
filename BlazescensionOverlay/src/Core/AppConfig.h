@@ -27,6 +27,9 @@ struct AppConfig {
     bool showNpcBoxes = false;
     bool showOtherPlayerBoxes = false;
     bool showTargetLine = false;
+    bool showLocalPlayerCircle = false;
+    bool showTargetCircle = false;
+    bool showUnitNames = true;
     bool showDebugPanel = false;
     bool showProjectionDebug = false;
     bool streamProof = false;
@@ -37,6 +40,7 @@ struct AppConfig {
     float boxWidth = 0.90f;
     float boxHeight = 2.35f;
     float screenBoxWidthRatio = 0.42f;
+    float circleRadius = 1.20f;
     float lineThickness = 1.8f;
     int pollHz = 20;
     int overlayFps = 144;
