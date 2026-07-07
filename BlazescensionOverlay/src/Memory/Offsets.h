@@ -62,12 +62,24 @@ constexpr uint32_t MaskPlayer = 0x10;
 } // namespace typeinfo
 
 namespace desc {
+// UNIT_FIELD_BYTES_0, 4 packed bytes at +0x44: byte0=race, byte1=class,
+// byte2=gender, byte3=powerType (PowerType below matches byte3 exactly).
+// Confirmed via Lua UnitRace/UnitClass (sub_60FD40/sub_60FEC0), which read
+// descriptor+68/+69 respectively. For non-player units the "race" byte slot
+// is repurposed by the client to hold the raw CreatureType.dbc id instead
+// (1=Beast .. 7=Humanoid, 8=Critter, 9=Mechanical, 10=NotSpecified,
+// 11=Totem, 12=NonCombatPet, 13=GasCloud) -- this is how sub_71F300
+// (UnitCreatureType's fallback path) resolves creature type when no family
+// override exists.
+constexpr uint32_t RaceOrCreatureType = 0x44;
 constexpr uint32_t PowerType = 0x47;
 constexpr uint32_t Health = 0x48;
 constexpr uint32_t Power = 0x4C;
 constexpr uint32_t MaxHealth = 0x68;
 constexpr uint32_t MaxPower = 0x6C;
 constexpr uint32_t Level = 0xC0;
+
+constexpr uint8_t CreatureTypeCritter = 8;
 } // namespace desc
 
 namespace movement {

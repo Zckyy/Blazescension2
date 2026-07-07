@@ -204,6 +204,9 @@ void drawMenu(Core::AppConfig& config, const Core::GameSnapshot& snapshot) {
             ImGui::Spacing();
             ImGui::Checkbox("Nearby NPC boxes", &config.showNpcBoxes);
             ImGui::Checkbox("Nearby player boxes", &config.showOtherPlayerBoxes);
+            if (config.showNpcBoxes) {
+                ImGui::Checkbox("Hide critters", &config.hideCritters);
+            }
             if (config.showNpcBoxes || config.showOtherPlayerBoxes) {
                 ImGui::SliderFloat("Nearby radius (yd)", &config.nearbyRadius, 10.0f, 200.0f, "%.0f");
                 ImGui::SliderInt("Nearby max count", &config.nearbyMaxCount, 5, 150);
