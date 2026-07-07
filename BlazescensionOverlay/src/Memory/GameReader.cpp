@@ -424,7 +424,14 @@ void GameReader::scanNearbyUnits(
             const bool wantPlayer = config.showOtherPlayerBoxes && isPlayer;
 
             if (wantNpc || wantPlayer) {
-                const uint32_t movement = m_memory.read<uint32_t>(entry + Offsets::obj::MovementPtr);
+                // Dead units keep their Unit type until despawn/looted, so a
+                // battlefield of corpses would otherwise crowd out live
+                // targets before the distance cap even applies. Check raw
+                // descriptor health here, before it costs a candidate slot.
+                const uint32_t descriptor = m_memory.read<uint32_t>(entry + Offsets::obj::DescriptorPtr);
+                const uint32_t health = descriptor ? m_memory.read<uint32_t>(descriptor + Offsets::desc::Health) : 0;
+
+                const uint32_t movement = health ? m_memory.read<uint32_t>(entry + Offsets::obj::MovementPtr) : 0;
                 Core::Vec3 pos{};
                 bool hasPos = false;
                 if (movement) {
