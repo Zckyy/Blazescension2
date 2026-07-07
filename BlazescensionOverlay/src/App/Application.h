@@ -26,9 +26,12 @@ private:
     Overlay::OverlayWindow m_overlay;
     Rendering::SceneRenderer m_sceneRenderer;
     HWND m_gameWindow = nullptr;
+    RECT m_lastWindowRect{};
+    bool m_haveWindowRect = false;
     bool m_prevInsertDown = false;
     double m_lastSnapshotSeconds = 0.0;
     double m_lastFrameSeconds = 0.0;
+    double m_lastWindowSearchSeconds = 0.0;
 };
 
 } // namespace App

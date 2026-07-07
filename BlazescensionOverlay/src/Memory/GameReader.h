@@ -19,6 +19,8 @@ public:
 private:
     bool cacheDivisors();
     uint32_t resolveCurMgr();
+    uint32_t currentCurMgr();
+    void updateCvarFlags();
     uint32_t hashLookup(uint32_t curMgr, Core::Guid64 guid);
     Core::Guid64 readGuid(uint32_t address) const;
     bool readUnitByGuid(uint32_t curMgr, Core::Guid64 guid, Core::UnitRelation relation, Core::UnitSnapshot& out);
@@ -27,6 +29,11 @@ private:
 
     ProcessMemory m_memory;
     std::array<uint32_t, 8> m_divisors{ 1, 1, 1, 1, 1, 1, 1, 1 };
+    // Object manager pointer survives across frames; re-resolving it requires
+    // an expensive system-wide thread walk, so cache and revalidate instead.
+    uint32_t m_curMgr = 0;
+    bool m_useCachedHealth = false;
+    bool m_useCachedPower = false;
 };
 
 } // namespace Memory

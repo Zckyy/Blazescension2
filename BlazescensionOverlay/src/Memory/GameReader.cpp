@@ -32,6 +32,68 @@ bool finite3(const Core::Vec3& v) {
     return std::isfinite(v.x) && std::isfinite(v.y) && std::isfinite(v.z);
 }
 
+// Contiguous memory blocks so one ReadProcessMemory call replaces a dozen
+// single-field reads. Layouts mirror the offsets in Offsets.h.
+
+#pragma pack(push, 1)
+
+struct DescriptorBlock { // descriptor + 0x40
+    uint8_t pad0[7];
+    uint8_t powerType;    // +0x47
+    uint32_t health;      // +0x48
+    uint32_t power[7];    // +0x4C
+    uint32_t maxHealth;   // +0x68
+    uint32_t maxPower[7]; // +0x6C
+    uint8_t pad1[0x38];
+    uint32_t level;       // +0xC0
+};
+static_assert(sizeof(DescriptorBlock) == 0x84);
+
+struct ObjectPointers { // object + 0xD0
+    uint32_t descriptor; // +0xD0
+    uint32_t pad;
+    uint32_t movement;   // +0xD8
+};
+
+struct MovementBlock { // movement + 0x10
+    float x;             // +0x10
+    float y;
+    float z;
+    uint8_t pad[0x70];
+    float speed;         // +0x8C
+};
+static_assert(sizeof(MovementBlock) == 0x80);
+
+struct CachedStats { // object + 0xFB0
+    uint32_t health;   // +0xFB0
+    uint32_t power[7]; // +0xFB4
+};
+
+struct CameraBlock { // camera + 0x00
+    uint8_t pad0[8];
+    float x;           // +0x08
+    float y;
+    float z;
+    float matrix[9];   // +0x14
+    float nearClip;    // +0x38
+    uint8_t pad1[4];
+    float fov;         // +0x40
+    uint8_t pad2[0xD8];
+    float yaw;         // +0x11C
+    float pitch;       // +0x120
+};
+static_assert(sizeof(CameraBlock) == 0x124);
+
+struct HashNodeKeys { // node + 0x18
+    uint32_t keyLow;   // +0x18
+    uint8_t pad[0x14];
+    uint32_t guidLow;  // +0x30
+    uint32_t guidHigh; // +0x34
+};
+static_assert(sizeof(HashNodeKeys) == 0x20);
+
+#pragma pack(pop)
+
 } // namespace
 
 bool GameReader::attach() {
@@ -43,6 +105,7 @@ bool GameReader::attach() {
 
 void GameReader::detach() {
     m_memory.detach();
+    m_curMgr = 0;
 }
 
 bool GameReader::cacheDivisors() {
@@ -78,8 +141,9 @@ Core::GameSnapshot GameReader::readSnapshot() {
     snapshot.pid = m_memory.pid();
     snapshot.moduleBase = m_memory.moduleBase();
 
-    const uint32_t curMgr = resolveCurMgr();
+    const uint32_t curMgr = currentCurMgr();
     if (curMgr) {
+        updateCvarFlags();
         readLocalPlayer(curMgr, snapshot.player);
         readUnitByGuid(curMgr, readGuid(m_memory.moduleBase() + Offsets::rva::TargetGuid),
                        Core::UnitRelation::Target, snapshot.target);
@@ -91,6 +155,27 @@ Core::GameSnapshot GameReader::readSnapshot() {
 
     readCamera(snapshot.camera);
     return snapshot;
+}
+
+uint32_t GameReader::currentCurMgr() {
+    if (m_curMgr) {
+        uint32_t guidLow = 0;
+        if (m_memory.read(m_curMgr + Offsets::mgr::LocalGuid, guidLow) && guidLow) {
+            return m_curMgr;
+        }
+        m_curMgr = 0;
+    }
+
+    m_curMgr = resolveCurMgr();
+    return m_curMgr;
+}
+
+void GameReader::updateCvarFlags() {
+    const uint32_t healthCvar = m_memory.read<uint32_t>(m_memory.moduleBase() + Offsets::rva::HealthCacheCvar);
+    m_useCachedHealth = healthCvar && m_memory.read<uint32_t>(healthCvar + Offsets::cvar::Value) != 0;
+
+    const uint32_t powerCvar = m_memory.read<uint32_t>(m_memory.moduleBase() + Offsets::rva::PowerCacheCvar);
+    m_useCachedPower = powerCvar && m_memory.read<uint32_t>(powerCvar + Offsets::cvar::Value) != 0;
 }
 
 uint32_t GameReader::resolveCurMgr() {
@@ -157,9 +242,9 @@ uint32_t GameReader::hashLookup(uint32_t curMgr, Core::Guid64 guid) {
     const uint32_t delta = m_memory.read<uint32_t>(hashBase + bucket);
 
     for (int guard = 0; entry && !(entry & 1) && guard < 100000; ++guard) {
-        if (m_memory.read<uint32_t>(entry + Offsets::node::KeyLow) == guid.low &&
-            m_memory.read<uint32_t>(entry + Offsets::node::GuidLow) == guid.low &&
-            m_memory.read<uint32_t>(entry + Offsets::node::GuidHigh) == guid.high) {
+        HashNodeKeys keys{};
+        if (m_memory.read(entry + Offsets::node::KeyLow, keys) &&
+            keys.keyLow == guid.low && keys.guidLow == guid.low && keys.guidHigh == guid.high) {
             return entry;
         }
         entry = m_memory.read<uint32_t>(entry + delta + 4);
@@ -192,42 +277,52 @@ bool GameReader::readUnitByGuid(uint32_t curMgr, Core::Guid64 guid, Core::UnitRe
     }
 
     const uint32_t object = hashLookup(curMgr, guid);
-    const uint32_t descBase = object ? m_memory.read<uint32_t>(object + Offsets::obj::DescriptorPtr) : 0;
-    if (!object || !descBase) {
+    ObjectPointers pointers{};
+    if (!object || !m_memory.read(object + Offsets::obj::DescriptorPtr, pointers) || !pointers.descriptor) {
+        return false;
+    }
+    const uint32_t descBase = pointers.descriptor;
+
+    DescriptorBlock desc{};
+    if (!m_memory.read(descBase + 0x40, desc)) {
         return false;
     }
 
     out.valid = true;
     out.objectAddress = object;
     out.descriptorAddress = descBase;
-    out.level = m_memory.read<uint32_t>(descBase + Offsets::desc::Level);
-    out.powerType = m_memory.read<uint8_t>(descBase + Offsets::desc::PowerType);
+    out.level = desc.level;
+    out.powerType = desc.powerType;
 
     const uint8_t powerType = out.powerType < m_divisors.size() ? out.powerType : 0;
     const uint32_t divisor = m_divisors[powerType] == 0 ? 1 : m_divisors[powerType];
+    const uint8_t powerIndex = powerType < 7 ? powerType : 0;
 
-    const uint32_t healthCvar = m_memory.read<uint32_t>(m_memory.moduleBase() + Offsets::rva::HealthCacheCvar);
-    const bool useCachedHealth = healthCvar && m_memory.read<uint32_t>(healthCvar + Offsets::cvar::Value) != 0;
-    out.health = useCachedHealth ? m_memory.read<uint32_t>(object + Offsets::obj::CachedHealth)
-                                 : m_memory.read<uint32_t>(descBase + Offsets::desc::Health);
-    out.maxHealth = m_memory.read<uint32_t>(descBase + Offsets::desc::MaxHealth);
+    uint32_t rawHealth = desc.health;
+    uint32_t rawPower = desc.power[powerIndex];
+    if (m_useCachedHealth || m_useCachedPower) {
+        CachedStats cached{};
+        if (m_memory.read(object + Offsets::obj::CachedHealth, cached)) {
+            if (m_useCachedHealth) {
+                rawHealth = cached.health;
+            }
+            if (m_useCachedPower) {
+                rawPower = cached.power[powerIndex];
+            }
+        }
+    }
 
-    const uint32_t powerCvar = m_memory.read<uint32_t>(m_memory.moduleBase() + Offsets::rva::PowerCacheCvar);
-    const bool useCachedPower = powerCvar && m_memory.read<uint32_t>(powerCvar + Offsets::cvar::Value) != 0;
-    const uint32_t rawPower = useCachedPower
-        ? m_memory.read<uint32_t>(object + Offsets::obj::CachedPower + powerType * sizeof(uint32_t))
-        : m_memory.read<uint32_t>(descBase + Offsets::desc::Power + powerType * sizeof(uint32_t));
-    const uint32_t rawMaxPower = m_memory.read<uint32_t>(descBase + Offsets::desc::MaxPower + powerType * sizeof(uint32_t));
-
+    out.health = rawHealth;
+    out.maxHealth = desc.maxHealth;
     out.power = rawPower / divisor;
-    out.maxPower = rawMaxPower / divisor;
+    out.maxPower = desc.maxPower[powerIndex] / divisor;
 
-    const uint32_t movement = m_memory.read<uint32_t>(object + Offsets::obj::MovementPtr);
-    if (movement) {
-        out.position.x = m_memory.read<float>(movement + Offsets::movement::X);
-        out.position.y = m_memory.read<float>(movement + Offsets::movement::Y);
-        out.position.z = m_memory.read<float>(movement + Offsets::movement::Z);
-        out.speed = m_memory.read<float>(movement + Offsets::movement::Speed);
+    MovementBlock movement{};
+    if (pointers.movement && m_memory.read(pointers.movement + Offsets::movement::X, movement)) {
+        out.position.x = movement.x;
+        out.position.y = movement.y;
+        out.position.z = movement.z;
+        out.speed = movement.speed;
         out.hasPosition = finite3(out.position);
     }
 
@@ -246,15 +341,23 @@ bool GameReader::readCamera(Core::CameraSnapshot& out) {
         return false;
     }
 
-    out.position.x = m_memory.read<float>(camera + Offsets::camera::X);
-    out.position.y = m_memory.read<float>(camera + Offsets::camera::Y);
-    out.position.z = m_memory.read<float>(camera + Offsets::camera::Z);
-    out.hasMatrix = m_memory.read(camera + Offsets::camera::Matrix, out.matrix);
-    out.nearClip = m_memory.read<float>(camera + Offsets::camera::NearClip);
+    CameraBlock block{};
+    if (!m_memory.read(camera, block)) {
+        return false;
+    }
+
+    out.position.x = block.x;
+    out.position.y = block.y;
+    out.position.z = block.z;
+    for (int i = 0; i < 9; ++i) {
+        out.matrix[i] = block.matrix[i];
+    }
+    out.hasMatrix = true;
+    out.nearClip = block.nearClip;
     out.hasViewProj = m_memory.read(root + Offsets::worldFrame::ViewProjMatrix, out.viewProj);
-    out.yaw = m_memory.read<float>(camera + Offsets::camera::Yaw);
-    out.pitch = m_memory.read<float>(camera + Offsets::camera::Pitch);
-    out.fov = m_memory.read<float>(camera + Offsets::camera::Fov);
+    out.yaw = block.yaw;
+    out.pitch = block.pitch;
+    out.fov = block.fov;
 
     if (!finite3(out.position) || !std::isfinite(out.yaw) || !std::isfinite(out.pitch) ||
         !std::isfinite(out.fov) || out.fov < 0.1f || out.fov > 3.2f) {

@@ -7,6 +7,10 @@
 #include <chrono>
 #include <thread>
 
+#include <timeapi.h>
+
+#pragma comment(lib, "winmm.lib")
+
 namespace App {
 
 namespace {
@@ -26,6 +30,9 @@ int Application::run(HINSTANCE instance) {
     }
 
     UI::applyBlazeStyle();
+    // Default Windows timer resolution (~15.6 ms) makes sleep_for overshoot
+    // badly; 1 ms resolution keeps the frame cap accurate.
+    timeBeginPeriod(1);
     m_lastFrameSeconds = nowSeconds();
     m_lastSnapshotSeconds = 0.0;
 
@@ -52,6 +59,7 @@ int Application::run(HINSTANCE instance) {
         capFrameRate();
     }
 
+    timeEndPeriod(1);
     m_overlay.shutdown();
     return 0;
 }
@@ -87,12 +95,30 @@ void Application::updateGameWindow() {
     }
 
     if (!m_gameWindow || !IsWindow(m_gameWindow)) {
-        Overlay::findMainWindowForPid(m_snapshot.pid, m_gameWindow);
+        // EnumWindows every frame is wasteful while the game window is
+        // missing (minimized to tray, still loading); retry at 2 Hz.
+        const double now = nowSeconds();
+        if (now - m_lastWindowSearchSeconds < 0.5) {
+            return;
+        }
+        m_lastWindowSearchSeconds = now;
+        m_gameWindow = nullptr;
+        if (!Overlay::findMainWindowForPid(m_snapshot.pid, m_gameWindow)) {
+            return;
+        }
+        m_haveWindowRect = false;
     }
 
     RECT rect{};
     if (Overlay::getClientScreenRect(m_gameWindow, rect)) {
-        m_overlay.moveTo(rect);
+        const bool changed = !m_haveWindowRect ||
+            rect.left != m_lastWindowRect.left || rect.top != m_lastWindowRect.top ||
+            rect.right != m_lastWindowRect.right || rect.bottom != m_lastWindowRect.bottom;
+        if (changed) {
+            m_overlay.moveTo(rect);
+            m_lastWindowRect = rect;
+            m_haveWindowRect = true;
+        }
     }
 }
 

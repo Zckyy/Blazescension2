@@ -140,6 +140,9 @@ void OverlayWindow::present(int syncInterval) {
 }
 
 void OverlayWindow::setMenuOpen(bool open) {
+    if (m_menuOpen == open) {
+        return;
+    }
     m_menuOpen = open;
     updateInputMode();
 }
