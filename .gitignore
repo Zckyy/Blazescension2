@@ -1,0 +1,27 @@
+# IDA database of the target game binary — large, and not ours to redistribute
+*.i64
+*.idb
+*.id0
+*.id1
+*.id2
+*.nam
+*.til
+
+# CMake build output / vendored fetched deps
+build/
+out/
+
+# Common MSVC/CMake noise
+*.obj
+*.pdb
+*.ilk
+*.exp
+*.lib
+*.exe
+CMakeCache.txt
+CMakeFiles/
+
+# Editor/OS cruft
+.vs/
+*.user
+Thumbs.db
