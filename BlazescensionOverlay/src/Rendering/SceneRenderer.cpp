@@ -66,6 +66,43 @@ void drawProjectionDebug(
     draw->AddText(ImVec2(chest.x + 9.0f, chest.y - 11.0f), color, basis.name);
 }
 
+// Projects the 3D player->target segment and draws it as a single screen
+// line. A straight world-space segment projects to a straight screen line
+// under perspective, so connecting the two projected endpoints is exact;
+// the endpoints are lifted to mid-body height so the line reads as a body
+// tether rather than a ground scrape.
+void drawTargetLine(
+    const Core::UnitSnapshot& player,
+    const Core::UnitSnapshot& target,
+    const Core::CameraSnapshot& camera,
+    const Core::AppConfig& config,
+    const ProjectionBasis& basis,
+    const Core::Vec2& viewport) {
+    if (!player.valid || !player.hasPosition ||
+        !target.valid || !target.hasPosition || !camera.valid) {
+        return;
+    }
+
+    const float lift = config.boxHeight * 0.5f;
+    const Core::Vec3 from{ player.position.x, player.position.y, player.position.z + lift };
+    const Core::Vec3 to{ target.position.x, target.position.y, target.position.z + lift };
+
+    Core::Vec2 a{};
+    Core::Vec2 b{};
+    if (!worldToScreen(from, camera, viewport, basis, a) ||
+        !worldToScreen(to, camera, viewport, basis, b)) {
+        return;
+    }
+
+    ImDrawList* draw = ImGui::GetForegroundDrawList();
+    const ImVec2 pa{ a.x, a.y };
+    const ImVec2 pb{ b.x, b.y };
+    const ImU32 shadow = IM_COL32(0, 0, 0, 190);
+    const ImU32 line = relationColor(Core::UnitRelation::Target);
+    draw->AddLine(pa, pb, shadow, config.lineThickness + 2.2f);
+    draw->AddLine(pa, pb, line, config.lineThickness);
+}
+
 } // namespace
 
 void SceneRenderer::draw(const Core::GameSnapshot& snapshot, const Core::AppConfig& config) {
@@ -82,6 +119,9 @@ void SceneRenderer::draw(const Core::GameSnapshot& snapshot, const Core::AppConf
     }
     if (config.showTargetBox) {
         drawUnitBox(snapshot.target, snapshot.camera, config, basis);
+    }
+    if (config.showTargetLine) {
+        drawTargetLine(snapshot.player, snapshot.target, snapshot.camera, config, basis, viewport);
     }
     if (config.showFocusBox) {
         drawUnitBox(snapshot.focus, snapshot.camera, config, basis);

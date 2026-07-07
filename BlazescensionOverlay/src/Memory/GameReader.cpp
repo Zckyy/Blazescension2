@@ -431,16 +431,7 @@ void GameReader::scanNearbyUnits(
                 const uint32_t descriptor = m_memory.read<uint32_t>(entry + Offsets::obj::DescriptorPtr);
                 const uint32_t health = descriptor ? m_memory.read<uint32_t>(descriptor + Offsets::desc::Health) : 0;
 
-                // wantNpc/wantPlayer are mutually exclusive per object (the
-                // Player type bit rules one or the other out), so this only
-                // ever applies to the NPC path.
-                bool skip = health == 0;
-                if (!skip && wantNpc && config.hideCritters) {
-                    const uint8_t creatureType = m_memory.read<uint8_t>(descriptor + Offsets::desc::CreatureType);
-                    skip = creatureType == Offsets::desc::CreatureTypeCritter;
-                }
-
-                const uint32_t movement = skip ? 0 : m_memory.read<uint32_t>(entry + Offsets::obj::MovementPtr);
+                const uint32_t movement = health ? m_memory.read<uint32_t>(entry + Offsets::obj::MovementPtr) : 0;
                 Core::Vec3 pos{};
                 bool hasPos = false;
                 if (movement) {

@@ -62,22 +62,12 @@ constexpr uint32_t MaskPlayer = 0x10;
 } // namespace typeinfo
 
 namespace desc {
-// Raw CreatureType.dbc id, read by UnitCreatureType's core resolver
-// (sub_71F300: `movzx eax, byte ptr [descriptor+1D3h]`, then bounds-checked
-// against the CreatureType.dbc index). Standard 3.3.5 enum: 1=Beast,
-// 2=Dragonkin, 3=Demon, 4=Elemental, 5=Giant, 6=Undead, 7=Humanoid,
-// 8=Critter, 9=Mechanical, 10=NotSpecified, 11=Totem, 12=NonCombatPet,
-// 13=GasCloud. NOTE: descriptor+0x44 (UNIT_FIELD_BYTES_0 byte0 = race) is
-// only the *fallback* family-lookup path in that function, not the type.
-constexpr uint32_t CreatureType = 0x1D3;
 constexpr uint32_t PowerType = 0x47;
 constexpr uint32_t Health = 0x48;
 constexpr uint32_t Power = 0x4C;
 constexpr uint32_t MaxHealth = 0x68;
 constexpr uint32_t MaxPower = 0x6C;
 constexpr uint32_t Level = 0xC0;
-
-constexpr uint8_t CreatureTypeCritter = 8;
 } // namespace desc
 
 namespace movement {

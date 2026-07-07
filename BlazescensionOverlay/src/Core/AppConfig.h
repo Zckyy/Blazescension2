@@ -26,7 +26,7 @@ struct AppConfig {
     bool showMouseoverBox = false;
     bool showNpcBoxes = false;
     bool showOtherPlayerBoxes = false;
-    bool hideCritters = true;
+    bool showTargetLine = false;
     bool showDebugPanel = false;
     bool showProjectionDebug = false;
     bool streamProof = false;

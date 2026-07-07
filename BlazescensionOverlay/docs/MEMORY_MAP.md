@@ -89,7 +89,6 @@ sources.
 | Object `+0xD8` | Movement pointer |
 | Object `+0xFB0` | Cached/display health |
 | Object `+0xFB4 + 4 * powerType` | Cached/display power |
-| Descriptor `+0x1D3` | CreatureType.dbc id, byte (`8` = Critter) |
 | Descriptor `+0x47` | Current power type |
 | Descriptor `+0x48` | Health |
 | Descriptor `+0x4C + 4 * powerType` | Power |
@@ -154,37 +153,6 @@ A plain NPC has `typeMask == 9` (`Object | Unit`, no `Player` bit); a player
 character has `typeMask == 25` (`Object | Unit | Player`). Filter with
 `typeMask & 8` for "is a unit" and `typeMask & 16` for "is a player" — do not
 compare for exact equality, since the mask is inherited/cumulative.
-
-### Filtering critters
-
-`UnitCreatureType`'s core resolver `sub_71F300` reads the creature type
-directly from the descriptor:
-
-```asm
-mov   eax, [ecx+0D0h]          ; descriptor pointer (object + 0xD0)
-movzx eax, byte ptr [eax+1D3h] ; CreatureType.dbc id
-```
-
-so the type byte is at **`descriptor + 0x1D3`**, bounds-checked against the
-loaded `CreatureType.dbc` index. Standard 3.3.5 enum:
-
-```text
-1  Beast          6  Undead          11 Totem
-2  Dragonkin      7  Humanoid        12 NonCombatPet
-3  Demon          8  Critter         13 GasCloud
-4  Elemental      9  Mechanical
-5  Giant          10 NotSpecified
-```
-
-Note the `byte ptr [eax+44h]` read further down in `sub_71F300` is only the
-*fallback* family lookup (via `CreatureFamily.dbc`) used when the primary
-type is unset — `0x44` is `UNIT_FIELD_BYTES_0` byte0 (player race), **not**
-the creature type. An earlier version of this filter mistakenly used `0x44`
-and did not catch critters.
-
-`GameReader::scanNearbyUnits` skips NPC candidates where the `0x1D3` byte
-equals `8` (Critter) when `AppConfig::hideCritters` is set, so
-rabbits/squirrels/chickens don't clutter the box list.
 
 ### Cost
 
