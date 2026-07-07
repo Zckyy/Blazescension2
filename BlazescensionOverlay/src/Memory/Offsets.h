@@ -62,16 +62,14 @@ constexpr uint32_t MaskPlayer = 0x10;
 } // namespace typeinfo
 
 namespace desc {
-// UNIT_FIELD_BYTES_0, 4 packed bytes at +0x44: byte0=race, byte1=class,
-// byte2=gender, byte3=powerType (PowerType below matches byte3 exactly).
-// Confirmed via Lua UnitRace/UnitClass (sub_60FD40/sub_60FEC0), which read
-// descriptor+68/+69 respectively. For non-player units the "race" byte slot
-// is repurposed by the client to hold the raw CreatureType.dbc id instead
-// (1=Beast .. 7=Humanoid, 8=Critter, 9=Mechanical, 10=NotSpecified,
-// 11=Totem, 12=NonCombatPet, 13=GasCloud) -- this is how sub_71F300
-// (UnitCreatureType's fallback path) resolves creature type when no family
-// override exists.
-constexpr uint32_t RaceOrCreatureType = 0x44;
+// Raw CreatureType.dbc id, read by UnitCreatureType's core resolver
+// (sub_71F300: `movzx eax, byte ptr [descriptor+1D3h]`, then bounds-checked
+// against the CreatureType.dbc index). Standard 3.3.5 enum: 1=Beast,
+// 2=Dragonkin, 3=Demon, 4=Elemental, 5=Giant, 6=Undead, 7=Humanoid,
+// 8=Critter, 9=Mechanical, 10=NotSpecified, 11=Totem, 12=NonCombatPet,
+// 13=GasCloud. NOTE: descriptor+0x44 (UNIT_FIELD_BYTES_0 byte0 = race) is
+// only the *fallback* family-lookup path in that function, not the type.
+constexpr uint32_t CreatureType = 0x1D3;
 constexpr uint32_t PowerType = 0x47;
 constexpr uint32_t Health = 0x48;
 constexpr uint32_t Power = 0x4C;

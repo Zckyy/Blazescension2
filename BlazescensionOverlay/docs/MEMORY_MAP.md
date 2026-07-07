@@ -89,7 +89,7 @@ sources.
 | Object `+0xD8` | Movement pointer |
 | Object `+0xFB0` | Cached/display health |
 | Object `+0xFB4 + 4 * powerType` | Cached/display power |
-| Descriptor `+0x44` | UNIT_FIELD_BYTES_0 byte0: player race, or CreatureType.dbc id for non-players (`8` = Critter) |
+| Descriptor `+0x1D3` | CreatureType.dbc id, byte (`8` = Critter) |
 | Descriptor `+0x47` | Current power type |
 | Descriptor `+0x48` | Health |
 | Descriptor `+0x4C + 4 * powerType` | Power |
@@ -157,13 +157,16 @@ compare for exact equality, since the mask is inherited/cumulative.
 
 ### Filtering critters
 
-Confirmed via the Lua `UnitRace` handler (`sub_60FD40`), which reads
-`*(BYTE*)(descriptor + 68)` (`0x44`) and feeds it through a DBC-indexed
-lookup. That is the same byte position `UnitCreatureType`'s fallback path
-(`sub_71F300`) reads for non-family creatures. In other words: `descriptor
-+ 0x44` is `UNIT_FIELD_BYTES_0` byte0, which holds player race for `Player`
-objects, but is repurposed by the client to hold the raw `CreatureType.dbc`
-row id for any other `Unit`:
+`UnitCreatureType`'s core resolver `sub_71F300` reads the creature type
+directly from the descriptor:
+
+```asm
+mov   eax, [ecx+0D0h]          ; descriptor pointer (object + 0xD0)
+movzx eax, byte ptr [eax+1D3h] ; CreatureType.dbc id
+```
+
+so the type byte is at **`descriptor + 0x1D3`**, bounds-checked against the
+loaded `CreatureType.dbc` index. Standard 3.3.5 enum:
 
 ```text
 1  Beast          6  Undead          11 Totem
@@ -173,9 +176,15 @@ row id for any other `Unit`:
 5  Giant          10 NotSpecified
 ```
 
-`GameReader::scanNearbyUnits` skips NPC candidates where this byte equals
-`8` (Critter) when `AppConfig::hideCritters` is set, so rabbits/chickens/etc.
-don't clutter the box list.
+Note the `byte ptr [eax+44h]` read further down in `sub_71F300` is only the
+*fallback* family lookup (via `CreatureFamily.dbc`) used when the primary
+type is unset — `0x44` is `UNIT_FIELD_BYTES_0` byte0 (player race), **not**
+the creature type. An earlier version of this filter mistakenly used `0x44`
+and did not catch critters.
+
+`GameReader::scanNearbyUnits` skips NPC candidates where the `0x1D3` byte
+equals `8` (Critter) when `AppConfig::hideCritters` is set, so
+rabbits/squirrels/chickens don't clutter the box list.
 
 ### Cost
 

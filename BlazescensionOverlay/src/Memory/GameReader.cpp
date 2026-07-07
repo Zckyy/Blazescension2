@@ -436,7 +436,7 @@ void GameReader::scanNearbyUnits(
                 // ever applies to the NPC path.
                 bool skip = health == 0;
                 if (!skip && wantNpc && config.hideCritters) {
-                    const uint8_t creatureType = m_memory.read<uint8_t>(descriptor + Offsets::desc::RaceOrCreatureType);
+                    const uint8_t creatureType = m_memory.read<uint8_t>(descriptor + Offsets::desc::CreatureType);
                     skip = creatureType == Offsets::desc::CreatureTypeCritter;
                 }
 
