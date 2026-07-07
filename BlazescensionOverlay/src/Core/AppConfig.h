@@ -27,6 +27,7 @@ struct AppConfig {
     bool showDebugPanel = false;
     bool showProjectionDebug = false;
     bool streamProof = false;
+    bool requestExit = false;
     ProjectionMode projectionMode = ProjectionMode::Auto;
     BoxDrawMode boxDrawMode = BoxDrawMode::ScreenAligned;
 

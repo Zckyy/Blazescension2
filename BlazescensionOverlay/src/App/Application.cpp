@@ -39,7 +39,7 @@ int Application::run(HINSTANCE instance) {
     bool running = true;
     while (running) {
         running = m_overlay.processMessages();
-        if (!running || !handleHotkeys()) {
+        if (!running || !handleHotkeys() || m_config.requestExit) {
             break;
         }
 
@@ -75,7 +75,12 @@ bool Application::handleHotkeys() {
         (GetAsyncKeyState(VK_CONTROL) & 0x8000) &&
         (GetAsyncKeyState(VK_SHIFT) & 0x8000) &&
         (GetAsyncKeyState(VK_END) & 0x8000);
-    return !exitChord;
+
+    // DELETE is a bare panic key: no modifiers required, so it works even if
+    // the overlay window has stolen focus and is eating other chords.
+    const bool panicKey = (GetAsyncKeyState(VK_DELETE) & 0x8000) != 0;
+
+    return !exitChord && !panicKey;
 }
 
 void Application::updateSnapshot() {

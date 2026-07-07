@@ -153,7 +153,13 @@ void applyBlazeStyle() {
 void drawMenu(Core::AppConfig& config, const Core::GameSnapshot& snapshot) {
     ImGui::SetNextWindowSize(ImVec2(650.0f, 540.0f), ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowSizeConstraints(ImVec2(560.0f, 420.0f), ImVec2(FLT_MAX, FLT_MAX));
-    ImGui::Begin("Blazescension Control", &config.showMenu, ImGuiWindowFlags_NoCollapse);
+    // The window's X button quits the app outright (matches user expectation
+    // for an overlay close button); INSERT is what merely hides the menu.
+    bool windowOpen = true;
+    ImGui::Begin("Blazescension Control", &windowOpen, ImGuiWindowFlags_NoCollapse);
+    if (!windowOpen) {
+        config.requestExit = true;
+    }
 
     ImDrawList* draw = ImGui::GetWindowDrawList();
     const ImVec2 p = ImGui::GetCursorScreenPos();
@@ -265,7 +271,7 @@ void drawMenu(Core::AppConfig& config, const Core::GameSnapshot& snapshot) {
                                     snapshot.camera.pitch,
                                     snapshot.camera.fov);
             }
-            ImGui::TextDisabled("INSERT toggles menu | Ctrl+Shift+End exits");
+            ImGui::TextDisabled("INSERT toggles menu | DELETE or Ctrl+Shift+End exits");
             ImGui::EndTabItem();
         }
 
