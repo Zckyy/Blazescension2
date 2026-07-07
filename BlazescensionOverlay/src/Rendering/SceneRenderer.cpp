@@ -68,9 +68,8 @@ void drawProjectionDebug(
 
 // Projects the 3D player->target segment and draws it as a single screen
 // line. A straight world-space segment projects to a straight screen line
-// under perspective, so connecting the two projected endpoints is exact;
-// the endpoints are lifted to mid-body height so the line reads as a body
-// tether rather than a ground scrape.
+// under perspective, so connecting the two projected endpoints is exact.
+// The line runs from the top of the local player to the feet of the target.
 void drawTargetLine(
     const Core::UnitSnapshot& player,
     const Core::UnitSnapshot& target,
@@ -83,9 +82,8 @@ void drawTargetLine(
         return;
     }
 
-    const float lift = config.boxHeight * 0.5f;
-    const Core::Vec3 from{ player.position.x, player.position.y, player.position.z + lift };
-    const Core::Vec3 to{ target.position.x, target.position.y, target.position.z + lift };
+    const Core::Vec3 from{ player.position.x, player.position.y, player.position.z + config.boxHeight };
+    const Core::Vec3 to{ target.position.x, target.position.y, target.position.z };
 
     Core::Vec2 a{};
     Core::Vec2 b{};
