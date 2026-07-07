@@ -2,7 +2,10 @@
 
 #include "Offsets.h"
 
+#include <algorithm>
 #include <cmath>
+#include <cstdint>
+#include <vector>
 #include <tlhelp32.h>
 #include <winternl.h>
 
@@ -94,6 +97,15 @@ static_assert(sizeof(HashNodeKeys) == 0x20);
 
 #pragma pack(pop)
 
+constexpr float kMaxScanDistanceSq = 4000.0f * 4000.0f; // sanity bound, not the UI radius
+
+float distanceSq(const Core::Vec3& a, const Core::Vec3& b) {
+    const float dx = a.x - b.x;
+    const float dy = a.y - b.y;
+    const float dz = a.z - b.z;
+    return dx * dx + dy * dy + dz * dz;
+}
+
 } // namespace
 
 bool GameReader::attach() {
@@ -121,7 +133,7 @@ bool GameReader::cacheDivisors() {
     return true;
 }
 
-Core::GameSnapshot GameReader::readSnapshot() {
+Core::GameSnapshot GameReader::readSnapshot(const Core::AppConfig& config) {
     Core::GameSnapshot snapshot{};
 
     if (!m_memory.attached()) {
@@ -151,6 +163,23 @@ Core::GameSnapshot GameReader::readSnapshot() {
                        Core::UnitRelation::Focus, snapshot.focus);
         readUnitByGuid(curMgr, readGuid(m_memory.moduleBase() + Offsets::rva::MouseoverGuid),
                        Core::UnitRelation::Mouseover, snapshot.mouseover);
+
+        if ((config.showNpcBoxes || config.showOtherPlayerBoxes) &&
+            snapshot.player.valid && snapshot.player.hasPosition) {
+            const int pollHz = std::clamp(config.nearbyPollHz, 1, 20);
+            const auto interval = std::chrono::duration<double>(1.0 / pollHz);
+            const auto now = std::chrono::steady_clock::now();
+            if (now - m_lastNearbyScan >= interval) {
+                scanNearbyUnits(curMgr, snapshot.player.position, config, snapshot.player.guid);
+                m_lastNearbyScan = now;
+            }
+        }
+        if (config.showNpcBoxes) {
+            snapshot.nearbyNpcs = m_cachedNpcs;
+        }
+        if (config.showOtherPlayerBoxes) {
+            snapshot.nearbyPlayers = m_cachedPlayers;
+        }
     }
 
     readCamera(snapshot.camera);
@@ -277,6 +306,22 @@ bool GameReader::readUnitByGuid(uint32_t curMgr, Core::Guid64 guid, Core::UnitRe
     }
 
     const uint32_t object = hashLookup(curMgr, guid);
+    if (!object) {
+        return false;
+    }
+
+    return readUnitFromObject(object, relation, out);
+}
+
+bool GameReader::readUnitFromObject(uint32_t object, Core::UnitRelation relation, Core::UnitSnapshot& out) {
+    out.relation = relation;
+
+    HashNodeKeys keys{};
+    if (m_memory.read(object + Offsets::node::KeyLow, keys)) {
+        out.guid.low = keys.guidLow;
+        out.guid.high = keys.guidHigh;
+    }
+
     ObjectPointers pointers{};
     if (!object || !m_memory.read(object + Offsets::obj::DescriptorPtr, pointers) || !pointers.descriptor) {
         return false;
@@ -327,6 +372,121 @@ bool GameReader::readUnitByGuid(uint32_t curMgr, Core::Guid64 guid, Core::UnitRe
     }
 
     return true;
+}
+
+void GameReader::scanNearbyUnits(
+    uint32_t curMgr,
+    const Core::Vec3& origin,
+    const Core::AppConfig& config,
+    Core::Guid64 localGuid) {
+    m_cachedNpcs.clear();
+    m_cachedPlayers.clear();
+
+    if (!curMgr) {
+        return;
+    }
+
+    const uint32_t hashBase = m_memory.read<uint32_t>(curMgr + Offsets::mgr::HashBase);
+    const uint32_t mask = m_memory.read<uint32_t>(curMgr + Offsets::mgr::HashMask);
+    if (!hashBase || mask == 0xFFFFFFFF) {
+        return;
+    }
+
+    const float radius = std::clamp(config.nearbyRadius, 5.0f, 300.0f);
+    const float radiusSq = radius * radius;
+
+    struct Candidate {
+        uint32_t object;
+        Core::UnitRelation relation;
+        float distSq;
+    };
+    std::vector<Candidate> npcCandidates;
+    std::vector<Candidate> playerCandidates;
+
+    // mask+1 buckets; cap the walk defensively in case a bad read during a
+    // loading screen produces a huge mask.
+    const uint64_t bucketCount = std::min<uint64_t>(static_cast<uint64_t>(mask) + 1u, 65536u);
+
+    for (uint64_t i = 0; i < bucketCount; ++i) {
+        const uint32_t bucket = static_cast<uint32_t>(12u * i);
+        uint32_t entry = m_memory.read<uint32_t>(hashBase + bucket + 8);
+        const uint32_t delta = m_memory.read<uint32_t>(hashBase + bucket);
+
+        for (int guard = 0; entry && !(entry & 1) && guard < 64; ++guard) {
+            // Type filter first: cheapest way to skip items, containers,
+            // corpses, and game objects before touching movement/descriptor.
+            const uint32_t typeInfo = m_memory.read<uint32_t>(entry + Offsets::obj::TypeInfoPtr);
+            const uint32_t typeMask = typeInfo ? m_memory.read<uint32_t>(typeInfo + Offsets::typeinfo::TypeMask) : 0;
+
+            const bool isUnit = (typeMask & Offsets::typeinfo::MaskUnit) != 0;
+            const bool isPlayer = (typeMask & Offsets::typeinfo::MaskPlayer) != 0;
+            const bool wantNpc = config.showNpcBoxes && isUnit && !isPlayer;
+            const bool wantPlayer = config.showOtherPlayerBoxes && isPlayer;
+
+            if (wantNpc || wantPlayer) {
+                const uint32_t movement = m_memory.read<uint32_t>(entry + Offsets::obj::MovementPtr);
+                Core::Vec3 pos{};
+                bool hasPos = false;
+                if (movement) {
+                    pos.x = m_memory.read<float>(movement + Offsets::movement::X);
+                    pos.y = m_memory.read<float>(movement + Offsets::movement::Y);
+                    pos.z = m_memory.read<float>(movement + Offsets::movement::Z);
+                    hasPos = finite3(pos);
+                }
+
+                if (hasPos) {
+                    const float distSq = distanceSq(pos, origin);
+                    if (distSq <= radiusSq && distSq <= kMaxScanDistanceSq) {
+                        if (wantNpc) {
+                            npcCandidates.push_back({ entry, Core::UnitRelation::Npc, distSq });
+                        } else if (wantPlayer) {
+                            HashNodeKeys keys{};
+                            bool isSelf = false;
+                            if (m_memory.read(entry + Offsets::node::KeyLow, keys)) {
+                                isSelf = keys.guidLow == localGuid.low && keys.guidHigh == localGuid.high;
+                            }
+                            if (!isSelf) {
+                                playerCandidates.push_back({ entry, Core::UnitRelation::OtherPlayer, distSq });
+                            }
+                        }
+                    }
+                }
+            }
+
+            entry = m_memory.read<uint32_t>(entry + delta + 4);
+        }
+    }
+
+    const int maxCount = std::clamp(config.nearbyMaxCount, 1, 200);
+    auto byDistance = [](const Candidate& a, const Candidate& b) { return a.distSq < b.distSq; };
+
+    if (npcCandidates.size() > static_cast<size_t>(maxCount)) {
+        std::partial_sort(npcCandidates.begin(), npcCandidates.begin() + maxCount, npcCandidates.end(), byDistance);
+        npcCandidates.resize(maxCount);
+    } else {
+        std::sort(npcCandidates.begin(), npcCandidates.end(), byDistance);
+    }
+    if (playerCandidates.size() > static_cast<size_t>(maxCount)) {
+        std::partial_sort(playerCandidates.begin(), playerCandidates.begin() + maxCount, playerCandidates.end(), byDistance);
+        playerCandidates.resize(maxCount);
+    } else {
+        std::sort(playerCandidates.begin(), playerCandidates.end(), byDistance);
+    }
+
+    m_cachedNpcs.reserve(npcCandidates.size());
+    for (const Candidate& c : npcCandidates) {
+        Core::UnitSnapshot snap{};
+        if (readUnitFromObject(c.object, c.relation, snap)) {
+            m_cachedNpcs.push_back(std::move(snap));
+        }
+    }
+    m_cachedPlayers.reserve(playerCandidates.size());
+    for (const Candidate& c : playerCandidates) {
+        Core::UnitSnapshot snap{};
+        if (readUnitFromObject(c.object, c.relation, snap)) {
+            m_cachedPlayers.push_back(std::move(snap));
+        }
+    }
 }
 
 bool GameReader::readCamera(Core::CameraSnapshot& out) {

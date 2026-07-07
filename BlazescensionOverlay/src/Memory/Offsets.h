@@ -44,11 +44,22 @@ constexpr uint32_t GuidHigh = 0x34;
 } // namespace node
 
 namespace obj {
+// CGObject_C+0x08 -> type-info struct; +0x08 of that struct is a cumulative
+// type bitmask (Object=1, Item=2, Container=4, Unit=8, Player=16,
+// GameObject=32, DynamicObject=64, Corpse=128), confirmed via sub_4D4DB0's
+// callers (e.g. "Cursor Item" passes mask 2, "Local Player" passes mask 16).
+constexpr uint32_t TypeInfoPtr = 0x08;
 constexpr uint32_t DescriptorPtr = 0xD0;
 constexpr uint32_t MovementPtr = 0xD8;
 constexpr uint32_t CachedHealth = 0xFB0;
 constexpr uint32_t CachedPower = 0xFB4;
 } // namespace obj
+
+namespace typeinfo {
+constexpr uint32_t TypeMask = 0x08;
+constexpr uint32_t MaskUnit = 0x08;
+constexpr uint32_t MaskPlayer = 0x10;
+} // namespace typeinfo
 
 namespace desc {
 constexpr uint32_t PowerType = 0x47;

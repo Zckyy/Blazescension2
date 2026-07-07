@@ -84,6 +84,7 @@ sources.
 
 | Offset | Meaning |
 |---|---|
+| Object `+0x08` | Type-info pointer (see Object Enumeration below) |
 | Object `+0xD0` | Descriptor pointer |
 | Object `+0xD8` | Movement pointer |
 | Object `+0xFB0` | Cached/display health |
@@ -106,6 +107,62 @@ type:    0     1     2      3       4          5       6
 power:   Mana  Rage  Focus  Energy  Happiness  Runes   Runic Power
 divisor: 1     10    1      1       1000       1       10
 ```
+
+## Object Enumeration (Nearby NPC/Player ESP)
+
+`hashLookup` (see Object Manager Hash Lookup above) resolves one GUID at a
+time, but the hash table it walks holds every currently loaded object, not
+just the local player/target/focus/mouseover. Confirmed via `sub_4D4BB0`
+(the raw hash-bucket walker) and `sub_4D4DB0` (its type-filtered wrapper,
+called ~150 places): the hash table is a
+`TSExplicitList<CGObject_C, N>` (RTTI string `.?AV?$TSExplicitList@VCGObject_C@@...`),
+and each `entry` returned by the walk **is** the object pointer itself — the
+hash node fields (`node::KeyLow/GuidLow/GuidHigh`) are embedded directly in
+`CGObject_C`.
+
+To enumerate everything instead of one GUID, walk every bucket
+(`0 .. HashMask`) and follow each bucket's chain with the same delta-linked
+traversal `hashLookup` already uses per-bucket, just without the GUID
+comparison — every non-null, non-tagged (`!(entry & 1)`) node encountered is
+a live object.
+
+### Object type filtering
+
+```text
+typeInfoPtr = *(object + 0x08)
+typeMask    = *(typeInfoPtr + 0x08)
+```
+
+`typeMask` is a cumulative bitmask, standard WoW-client ordering, confirmed
+by decompiling a debug-info dump function (`sub_404B80`) that labels each
+`sub_4D4DB0` call by the mask it passes: `"Cursor Item"` → mask `2`,
+`"Local Player"` → mask `16`.
+
+```text
+1   Object          (base type, always set)
+2   Item
+4   Container
+8   Unit             <- creatures / NPCs
+16  Player
+32  GameObject
+64  DynamicObject
+128 Corpse
+```
+
+A plain NPC has `typeMask == 9` (`Object | Unit`, no `Player` bit); a player
+character has `typeMask == 25` (`Object | Unit | Player`). Filter with
+`typeMask & 8` for "is a unit" and `typeMask & 16` for "is a player" — do not
+compare for exact equality, since the mask is inherited/cumulative.
+
+### Cost
+
+A full hash-table walk is far more expensive than the four fixed GUID
+lookups (thousands of small reads instead of a handful), so
+`GameReader::scanNearbyUnits` runs on its own slow poll (`AppConfig::nearbyPollHz`,
+default 4 Hz) independent of the main `pollHz`, and results are cached
+between scans. Distance filtering happens during the walk itself (skip before
+the descriptor read, not after) to avoid the cost of resolving stats for
+units that will be discarded.
 
 ## Camera
 

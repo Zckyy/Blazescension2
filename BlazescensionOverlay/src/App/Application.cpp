@@ -89,7 +89,7 @@ void Application::updateSnapshot() {
     const double interval = 1.0 / static_cast<double>(pollHz);
 
     if (now - m_lastSnapshotSeconds >= interval) {
-        m_snapshot = m_reader.readSnapshot();
+        m_snapshot = m_reader.readSnapshot(m_config);
         m_lastSnapshotSeconds = now;
     }
 }

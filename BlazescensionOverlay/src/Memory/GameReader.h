@@ -1,9 +1,12 @@
 #pragma once
 
+#include "Core/AppConfig.h"
 #include "Core/Types.h"
 #include "ProcessMemory.h"
 
 #include <array>
+#include <chrono>
+#include <vector>
 
 namespace Memory {
 
@@ -13,7 +16,7 @@ public:
     void detach();
     bool attached() const { return m_memory.attached(); }
 
-    Core::GameSnapshot readSnapshot();
+    Core::GameSnapshot readSnapshot(const Core::AppConfig& config);
     const char* powerName(uint8_t type) const;
 
 private:
@@ -26,6 +29,12 @@ private:
     bool readUnitByGuid(uint32_t curMgr, Core::Guid64 guid, Core::UnitRelation relation, Core::UnitSnapshot& out);
     bool readLocalPlayer(uint32_t curMgr, Core::UnitSnapshot& out);
     bool readCamera(Core::CameraSnapshot& out);
+    bool readUnitFromObject(uint32_t object, Core::UnitRelation relation, Core::UnitSnapshot& out);
+    void scanNearbyUnits(
+        uint32_t curMgr,
+        const Core::Vec3& origin,
+        const Core::AppConfig& config,
+        Core::Guid64 localGuid);
 
     ProcessMemory m_memory;
     std::array<uint32_t, 8> m_divisors{ 1, 1, 1, 1, 1, 1, 1, 1 };
@@ -34,6 +43,14 @@ private:
     uint32_t m_curMgr = 0;
     bool m_useCachedHealth = false;
     bool m_useCachedPower = false;
+
+    // Nearby-unit enumeration walks the entire object-manager hash table, far
+    // pricier than the fixed GUID lookups, so results are cached and only
+    // refreshed at config.nearbyPollHz regardless of how often readSnapshot
+    // is called.
+    std::chrono::steady_clock::time_point m_lastNearbyScan{};
+    std::vector<Core::UnitSnapshot> m_cachedNpcs;
+    std::vector<Core::UnitSnapshot> m_cachedPlayers;
 };
 
 } // namespace Memory

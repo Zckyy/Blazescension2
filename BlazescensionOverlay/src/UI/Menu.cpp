@@ -22,6 +22,8 @@ const char* relationName(Core::UnitRelation relation) {
     case Core::UnitRelation::Target: return "Target";
     case Core::UnitRelation::Focus: return "Focus";
     case Core::UnitRelation::Mouseover: return "Mouseover";
+    case Core::UnitRelation::Npc: return "NPC";
+    case Core::UnitRelation::OtherPlayer: return "Other player";
     default: return "Unit";
     }
 }
@@ -199,6 +201,15 @@ void drawMenu(Core::AppConfig& config, const Core::GameSnapshot& snapshot) {
             ImGui::Checkbox("Mouseover box", &config.showMouseoverBox);
             ImGui::Checkbox("Status panel", &config.showStatusPanel);
             ImGui::Checkbox("Debug panel", &config.showDebugPanel);
+            ImGui::Spacing();
+            ImGui::Checkbox("Nearby NPC boxes", &config.showNpcBoxes);
+            ImGui::Checkbox("Nearby player boxes", &config.showOtherPlayerBoxes);
+            if (config.showNpcBoxes || config.showOtherPlayerBoxes) {
+                ImGui::SliderFloat("Nearby radius (yd)", &config.nearbyRadius, 10.0f, 200.0f, "%.0f");
+                ImGui::SliderInt("Nearby max count", &config.nearbyMaxCount, 5, 150);
+                ImGui::SliderInt("Nearby scan Hz", &config.nearbyPollHz, 1, 20);
+                ImGui::TextDisabled("Scans the full object list; kept slower than the main poll rate.");
+            }
             ImGui::EndTabItem();
         }
 
@@ -247,6 +258,13 @@ void drawMenu(Core::AppConfig& config, const Core::GameSnapshot& snapshot) {
             unitSummary(snapshot.focus);
             ImGui::Spacing();
             unitSummary(snapshot.mouseover);
+            if (config.showNpcBoxes || config.showOtherPlayerBoxes) {
+                ImGui::Spacing();
+                ImGui::Separator();
+                ImGui::TextDisabled("Nearby: %zu NPC%s, %zu player%s",
+                                    snapshot.nearbyNpcs.size(), snapshot.nearbyNpcs.size() == 1 ? "" : "s",
+                                    snapshot.nearbyPlayers.size(), snapshot.nearbyPlayers.size() == 1 ? "" : "s");
+            }
             ImGui::EndTabItem();
         }
 

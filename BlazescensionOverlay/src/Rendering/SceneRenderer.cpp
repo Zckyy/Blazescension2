@@ -17,6 +17,8 @@ ImU32 relationColor(Core::UnitRelation relation) {
     case Core::UnitRelation::Target: return IM_COL32(255, 90, 90, 235);
     case Core::UnitRelation::Focus: return IM_COL32(255, 210, 80, 235);
     case Core::UnitRelation::Mouseover: return IM_COL32(120, 255, 145, 235);
+    case Core::UnitRelation::Npc: return IM_COL32(255, 140, 60, 235);
+    case Core::UnitRelation::OtherPlayer: return IM_COL32(200, 110, 255, 235);
     default: return IM_COL32(210, 210, 220, 235);
     }
 }
@@ -27,6 +29,8 @@ const char* relationLabel(Core::UnitRelation relation) {
     case Core::UnitRelation::Target: return "Target";
     case Core::UnitRelation::Focus: return "Focus";
     case Core::UnitRelation::Mouseover: return "Mouseover";
+    case Core::UnitRelation::Npc: return "NPC";
+    case Core::UnitRelation::OtherPlayer: return "Player";
     default: return "Unit";
     }
 }
@@ -84,6 +88,16 @@ void SceneRenderer::draw(const Core::GameSnapshot& snapshot, const Core::AppConf
     }
     if (config.showMouseoverBox) {
         drawUnitBox(snapshot.mouseover, snapshot.camera, config, basis);
+    }
+    if (config.showNpcBoxes) {
+        for (const Core::UnitSnapshot& npc : snapshot.nearbyNpcs) {
+            drawUnitBox(npc, snapshot.camera, config, basis);
+        }
+    }
+    if (config.showOtherPlayerBoxes) {
+        for (const Core::UnitSnapshot& other : snapshot.nearbyPlayers) {
+            drawUnitBox(other, snapshot.camera, config, basis);
+        }
     }
     if (config.showProjectionDebug) {
         drawProjectionDebug(snapshot, basis, viewport);

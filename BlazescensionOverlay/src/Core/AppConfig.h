@@ -24,6 +24,8 @@ struct AppConfig {
     bool showTargetBox = true;
     bool showFocusBox = false;
     bool showMouseoverBox = false;
+    bool showNpcBoxes = false;
+    bool showOtherPlayerBoxes = false;
     bool showDebugPanel = false;
     bool showProjectionDebug = false;
     bool streamProof = false;
@@ -37,6 +39,13 @@ struct AppConfig {
     float lineThickness = 1.8f;
     int pollHz = 20;
     int overlayFps = 144;
+
+    // Enumerating the whole object-manager hash table is far pricier than the
+    // fixed GUID lookups, so it runs on its own slow poll independent of
+    // pollHz, and is capped by range/count.
+    float nearbyRadius = 60.0f;
+    int nearbyMaxCount = 40;
+    int nearbyPollHz = 4;
 };
 
 } // namespace Core

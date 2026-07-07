@@ -28,6 +28,8 @@ enum class UnitRelation {
     Target,
     Focus,
     Mouseover,
+    Npc,
+    OtherPlayer,
     Unknown
 };
 
@@ -71,6 +73,8 @@ struct GameSnapshot {
     UnitSnapshot target{};
     UnitSnapshot focus{};
     UnitSnapshot mouseover{};
+    std::vector<UnitSnapshot> nearbyNpcs{};
+    std::vector<UnitSnapshot> nearbyPlayers{};
     CameraSnapshot camera{};
 };
 
