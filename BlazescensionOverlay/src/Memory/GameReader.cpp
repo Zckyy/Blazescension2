@@ -165,20 +165,22 @@ Core::GameSnapshot GameReader::readSnapshot(const Core::AppConfig& config) {
         readUnitByGuid(curMgr, readGuid(m_memory.moduleBase() + Offsets::rva::MouseoverGuid),
                        Core::UnitRelation::Mouseover, snapshot.mouseover);
 
-        if ((config.showNpcBoxes || config.showOtherPlayerBoxes) &&
+        const bool wantsNearbyNpcs = config.showNpcBoxes || config.showNpcNames;
+        const bool wantsNearbyPlayers = config.showOtherPlayerBoxes || config.showOtherPlayerNames;
+        if ((wantsNearbyNpcs || wantsNearbyPlayers) &&
             snapshot.player.valid && snapshot.player.hasPosition) {
-            const int pollHz = std::clamp(config.nearbyPollHz, 1, 20);
-            const auto interval = std::chrono::duration<double>(1.0 / pollHz);
+            const int nearbyHz = std::clamp(config.nearbyPollHz, 1, 20);
+            const auto interval = std::chrono::duration<double>(1.0 / nearbyHz);
             const auto now = std::chrono::steady_clock::now();
             if (now - m_lastNearbyScan >= interval) {
                 scanNearbyUnits(curMgr, snapshot.player.position, config, snapshot.player.guid);
                 m_lastNearbyScan = now;
             }
         }
-        if (config.showNpcBoxes) {
+        if (wantsNearbyNpcs) {
             snapshot.nearbyNpcs = m_cachedNpcs;
         }
-        if (config.showOtherPlayerBoxes) {
+        if (wantsNearbyPlayers) {
             snapshot.nearbyPlayers = m_cachedPlayers;
         }
     }
@@ -372,14 +374,19 @@ bool GameReader::readUnitFromObject(uint32_t object, Core::UnitRelation relation
         out.hasPosition = finite3(out.position);
     }
 
-    // Players resolve names from the GUID name cache; every other unit uses
-    // the creature-name pointer chain hung off the object.
+    // Mirror UnitName's source selection. For player names the client uses the
+    // GUID stored in the object data block at object+0x08, not the hash-node
+    // GUID we used to resolve the object manager entry.
     const uint32_t typeInfo = m_memory.read<uint32_t>(object + Offsets::obj::TypeInfoPtr);
     const uint32_t typeMask = typeInfo ? m_memory.read<uint32_t>(typeInfo + Offsets::typeinfo::TypeMask) : 0;
     if ((typeMask & Offsets::typeinfo::MaskPlayer) != 0) {
-        out.hasName = readPlayerName(out.guid, out.name, sizeof(out.name));
+        Core::Guid64 nameGuid = typeInfo ? readGuid(typeInfo) : Core::Guid64{};
+        if (!nameGuid.valid()) {
+            nameGuid = out.guid;
+        }
+        out.hasName = readPlayerName(nameGuid, out.name, sizeof(out.name));
     } else {
-        out.hasName = readNpcName(object, out.name, sizeof(out.name));
+        out.hasName = readNpcName(object, descBase, out.name, sizeof(out.name));
     }
 
     return true;
@@ -419,7 +426,8 @@ bool GameReader::readPlayerName(Core::Guid64 guid, char* out, size_t outSize) {
         return false;
     }
 
-    const uint32_t db = m_memory.moduleBase() + Offsets::rva::PlayerNameStore;
+    const uint32_t db =
+        m_memory.moduleBase() + Offsets::rva::PlayerNameStore + Offsets::nameStore::LookupBase;
     const uint32_t hashBase = m_memory.read<uint32_t>(db + Offsets::nameStore::HashBase);
     const uint32_t mask = m_memory.read<uint32_t>(db + Offsets::nameStore::HashMask);
     if (!hashBase || mask == 0xFFFFFFFF) {
@@ -445,7 +453,30 @@ bool GameReader::readPlayerName(Core::Guid64 guid, char* out, size_t outSize) {
     return false;
 }
 
-bool GameReader::readNpcName(uint32_t object, char* out, size_t outSize) {
+bool GameReader::readNpcName(uint32_t object, uint32_t descriptor, char* out, size_t outSize) {
+    const uint32_t creatureNameId =
+        descriptor ? m_memory.read<uint32_t>(descriptor + Offsets::desc::CreatureNameId) : 0;
+    if (creatureNameId) {
+        const uint32_t db =
+            m_memory.moduleBase() + Offsets::rva::CreatureNameStore + Offsets::creatureNameStore::LookupBase;
+        const uint32_t hashBase = m_memory.read<uint32_t>(db + Offsets::creatureNameStore::HashBase);
+        const uint32_t mask = m_memory.read<uint32_t>(db + Offsets::creatureNameStore::HashMask);
+        if (hashBase && mask != 0xFFFFFFFF) {
+            const uint32_t bucket = 12u * (creatureNameId & mask);
+            uint32_t entry = m_memory.read<uint32_t>(hashBase + bucket + 8);
+            const uint32_t delta = m_memory.read<uint32_t>(hashBase + bucket);
+
+            for (int guard = 0; entry && !(entry & 1) && guard < 100000; ++guard) {
+                if (m_memory.read<uint32_t>(entry + Offsets::creatureNameStore::RecordKey) == creatureNameId &&
+                    m_memory.read<uint8_t>(entry + Offsets::creatureNameStore::RecordValid) != 0 &&
+                    readCString(entry + Offsets::creatureNameStore::RecordName, out, outSize)) {
+                    return true;
+                }
+                entry = m_memory.read<uint32_t>(entry + delta + 4);
+            }
+        }
+    }
+
     const uint32_t cache = m_memory.read<uint32_t>(object + Offsets::obj::NpcNameCache);
     const uint32_t namePtr = cache ? m_memory.read<uint32_t>(cache + Offsets::obj::NpcNamePtr) : 0;
     if (!namePtr) {

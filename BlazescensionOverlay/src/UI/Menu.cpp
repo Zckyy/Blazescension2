@@ -1,6 +1,5 @@
 #include "Menu.h"
 
-#include "Rendering/Projection.h"
 #include "imgui.h"
 
 #include <algorithm>
@@ -115,6 +114,11 @@ void sectionTitle(const char* title, const char* description) {
     ImGui::Separator();
 }
 
+void subSectionTitle(const char* title) {
+    ImGui::Spacing();
+    ImGui::TextColored(kAccent, "%s", title);
+}
+
 } // namespace
 
 void applyBlazeStyle() {
@@ -199,65 +203,52 @@ void drawMenu(Core::AppConfig& config, const Core::GameSnapshot& snapshot) {
 
     if (ImGui::BeginTabBar("##MainTabs")) {
         if (ImGui::BeginTabItem("Visuals")) {
-            sectionTitle("Draw Layers", "Toggle independent overlay layers.");
+            sectionTitle("Visual Layers", "Choose what the overlay draws.");
+
+            subSectionTitle("Box Style");
+            int boxMode = static_cast<int>(config.boxDrawMode);
+            if (ImGui::RadioButton("2D", boxMode == static_cast<int>(Core::BoxDrawMode::TwoD))) {
+                config.boxDrawMode = Core::BoxDrawMode::TwoD;
+            }
+            ImGui::SameLine();
+            if (ImGui::RadioButton("3D", boxMode == static_cast<int>(Core::BoxDrawMode::ThreeD))) {
+                config.boxDrawMode = Core::BoxDrawMode::ThreeD;
+            }
+
+            subSectionTitle("Player");
             ImGui::Checkbox("Local player box", &config.showLocalPlayerBox);
-            ImGui::Checkbox("Target box", &config.showTargetBox);
-            ImGui::Checkbox("Target snap line", &config.showTargetLine);
-            ImGui::Checkbox("Focus box", &config.showFocusBox);
-            ImGui::Checkbox("Mouseover box", &config.showMouseoverBox);
-            ImGui::Checkbox("Unit names", &config.showUnitNames);
-            ImGui::Checkbox("Status panel", &config.showStatusPanel);
-            ImGui::Checkbox("Debug panel", &config.showDebugPanel);
-            ImGui::Spacing();
+            ImGui::Checkbox("Local player name", &config.showLocalPlayerName);
             ImGui::Checkbox("Local player circle", &config.showLocalPlayerCircle);
+
+            subSectionTitle("Target");
+            ImGui::Checkbox("Target box", &config.showTargetBox);
+            ImGui::Checkbox("Target name", &config.showTargetName);
+            ImGui::Checkbox("Target snap line", &config.showTargetLine);
             ImGui::Checkbox("Target circle", &config.showTargetCircle);
             if (config.showLocalPlayerCircle || config.showTargetCircle) {
                 ImGui::SliderFloat("Circle radius (yd)", &config.circleRadius, 0.30f, 8.0f, "%.2f");
             }
-            ImGui::Spacing();
+
+            subSectionTitle("Tracked Units");
+            ImGui::Checkbox("Focus box", &config.showFocusBox);
+            ImGui::Checkbox("Focus name", &config.showFocusName);
+            ImGui::Checkbox("Mouseover box", &config.showMouseoverBox);
+            ImGui::Checkbox("Mouseover name", &config.showMouseoverName);
+
+            subSectionTitle("Nearby Units");
             ImGui::Checkbox("Nearby NPC boxes", &config.showNpcBoxes);
+            ImGui::Checkbox("Nearby NPC names", &config.showNpcNames);
             ImGui::Checkbox("Nearby player boxes", &config.showOtherPlayerBoxes);
-            if (config.showNpcBoxes || config.showOtherPlayerBoxes) {
+            ImGui::Checkbox("Nearby player names", &config.showOtherPlayerNames);
+            if (config.showNpcBoxes || config.showNpcNames ||
+                config.showOtherPlayerBoxes || config.showOtherPlayerNames) {
                 ImGui::SliderFloat("Nearby radius (yd)", &config.nearbyRadius, 10.0f, 200.0f, "%.0f");
                 ImGui::SliderInt("Nearby max count", &config.nearbyMaxCount, 5, 150);
                 ImGui::SliderInt("Nearby scan Hz", &config.nearbyPollHz, 1, 20);
-                ImGui::TextDisabled("Scans the full object list; kept slower than the main poll rate.");
+                ImGui::TextDisabled("Scans the full object list; kept slower than frame reads.");
             }
-            ImGui::EndTabItem();
-        }
 
-        if (ImGui::BeginTabItem("Tuning")) {
-            sectionTitle("Box Geometry", "These settings apply to every unit box.");
-            const char* boxModeItems[] = { "Screen aligned", "World 3D" };
-            int boxModeIndex = static_cast<int>(config.boxDrawMode);
-            if (ImGui::Combo("Box mode", &boxModeIndex, boxModeItems, IM_ARRAYSIZE(boxModeItems))) {
-                config.boxDrawMode = static_cast<Core::BoxDrawMode>(boxModeIndex);
-            }
-            ImGui::SliderFloat("Height", &config.boxHeight, 0.80f, 4.50f, "%.2f");
-            if (config.boxDrawMode == Core::BoxDrawMode::ScreenAligned) {
-                ImGui::SliderFloat("Width ratio", &config.screenBoxWidthRatio, 0.20f, 1.20f, "%.2f");
-            } else {
-                ImGui::SliderFloat("World width", &config.boxWidth, 0.30f, 2.50f, "%.2f");
-            }
-            ImGui::SliderFloat("Line thickness", &config.lineThickness, 1.0f, 5.0f, "%.1f");
-            ImGui::Separator();
-            const char* projectionItems[] = {
-                "Auto",
-                "Yaw X",
-                "Yaw X, inv pitch",
-                "Yaw Y",
-                "Yaw Y, inv pitch",
-                "Yaw -X",
-                "Yaw -Y",
-            };
-            int projectionIndex = static_cast<int>(config.projectionMode);
-            if (ImGui::Combo("Projection", &projectionIndex, projectionItems, IM_ARRAYSIZE(projectionItems))) {
-                config.projectionMode = static_cast<Core::ProjectionMode>(projectionIndex);
-            }
-            ImGui::Checkbox("Projection debug marker", &config.showProjectionDebug);
-            ImGui::Separator();
-            ImGui::SliderInt("Memory poll Hz", &config.pollHz, 5, 60);
-            ImGui::SliderInt("Overlay FPS cap", &config.overlayFps, 30, 240);
+            subSectionTitle("Overlay");
             ImGui::Checkbox("Hide overlay from capture", &config.streamProof);
             ImGui::EndTabItem();
         }
@@ -271,7 +262,8 @@ void drawMenu(Core::AppConfig& config, const Core::GameSnapshot& snapshot) {
             unitSummary(snapshot.focus);
             ImGui::Spacing();
             unitSummary(snapshot.mouseover);
-            if (config.showNpcBoxes || config.showOtherPlayerBoxes) {
+            if (config.showNpcBoxes || config.showNpcNames ||
+                config.showOtherPlayerBoxes || config.showOtherPlayerNames) {
                 ImGui::Spacing();
                 ImGui::Separator();
                 ImGui::TextDisabled("Nearby: %zu NPC%s, %zu player%s",
@@ -286,13 +278,7 @@ void drawMenu(Core::AppConfig& config, const Core::GameSnapshot& snapshot) {
             ImGui::Text("PID: %u", snapshot.pid);
             ImGui::Text("Module base: 0x%08X", snapshot.moduleBase);
             ImGui::Text("Camera: %s", snapshot.camera.valid ? "ready" : "waiting");
-            if (snapshot.camera.valid) {
-                const ImVec2 display = ImGui::GetIO().DisplaySize;
-                const Rendering::ProjectionBasis basis =
-                    Rendering::chooseProjectionBasis(snapshot, Core::Vec2{ display.x, display.y }, config.projectionMode);
-                ImGui::Text("Projection: %s", basis.name);
-                ImGui::Text("Camera matrix: %s", snapshot.camera.hasMatrix ? "ready" : "missing");
-            }
+            ImGui::Text("Camera matrix: %s", snapshot.camera.hasMatrix ? "ready" : "missing");
             if (snapshot.camera.valid) {
                 ImGui::TextDisabled("cam %.2f %.2f %.2f | yaw %.3f pitch %.3f fov %.3f",
                                     snapshot.camera.position.x,
@@ -307,36 +293,6 @@ void drawMenu(Core::AppConfig& config, const Core::GameSnapshot& snapshot) {
         }
 
         ImGui::EndTabBar();
-    }
-
-    ImGui::End();
-}
-
-void drawStatusPanel(const Core::AppConfig& config, const Core::GameSnapshot& snapshot) {
-    if (!config.showStatusPanel) {
-        return;
-    }
-
-    ImGui::SetNextWindowPos(ImVec2(18.0f, 18.0f), ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize(ImVec2(310.0f, 0.0f), ImGuiCond_FirstUseEver);
-    ImGui::Begin("Ascension Status", nullptr,
-                 ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize |
-                     ImGuiWindowFlags_NoSavedSettings);
-
-    if (!snapshot.attached) {
-        ImGui::TextColored(kWarn, "Waiting for Ascension.exe");
-    } else if (!snapshot.player.valid) {
-        ImGui::TextColored(kWarn, "Attached. Waiting for player in world.");
-    } else {
-        unitSummary(snapshot.player);
-    }
-
-    if (config.showDebugPanel) {
-        ImGui::Separator();
-        ImGui::TextDisabled("PID %u | base 0x%08X | %.0f FPS", snapshot.pid, snapshot.moduleBase, ImGui::GetIO().Framerate);
-        if (snapshot.target.valid) {
-            ImGui::TextDisabled("target 0x%08X%08X", snapshot.target.guid.high, snapshot.target.guid.low);
-        }
     }
 
     ImGui::End();

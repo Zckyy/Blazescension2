@@ -120,17 +120,17 @@ For future players, enemies, quest NPCs, quest items, or objects:
 2. Read memory in `Memory::GameReader` or a new reader in `src/Memory`.
 3. Add plain data fields to `Core::GameSnapshot` or a new snapshot struct.
 4. Draw the layer in `Rendering::SceneRenderer` or a new renderer class.
-5. Add toggles and tuning controls in `UI::Menu`.
+5. Add concise toggles in the relevant `UI::Menu` visual subsection.
 
 Keep UI, memory access, and drawing separate. That separation is the main reason
 this rewrite is easier for future agents to expand safely.
 
 ## Box Rendering
 
-`Core::AppConfig::boxDrawMode` defaults to `ScreenAligned`. This projects the
+`Core::AppConfig::boxDrawMode` defaults to `TwoD`. This projects the
 unit's feet, head, and midpoint, then draws a 2D rectangle in screen space. Use
 this for normal ESP-style unit boxes because it avoids perspective skew while
 still sticking to the 3D unit position.
 
-`World3D` draws the original world-space cuboid and will skew with camera angle
+`ThreeD` draws the original world-space cuboid and will skew with camera angle
 because it is a real perspective-projected box.

@@ -23,10 +23,14 @@ constexpr uint32_t MouseoverGuid = 0x7D07A0;
 // Player name cache DB (unk_C5D938). GUID-keyed hash with the same bucket
 // layout as the object manager; resolved by sub_67D770/sub_6792E0.
 constexpr uint32_t PlayerNameStore = 0x85D938;
+// Creature name cache DB (unk_C5DB58). Creature-display-id keyed hash;
+// resolved by sub_67EA30/sub_6F6020 before the object-local fallback.
+constexpr uint32_t CreatureNameStore = 0x85DB58;
 } // namespace rva
 
 namespace nameStore {
 // Offsets into the name-cache DB struct (same shape as the object manager).
+constexpr uint32_t LookupBase = 0x08; // sub_67D770: sub_6792E0(this + 8)
 constexpr uint32_t HashBase = 0x1C; // this[7]
 constexpr uint32_t HashMask = 0x24; // this[9]
 // Offsets into a resolved name record (sub_6792E0 match + sub_67D770 read).
@@ -35,6 +39,15 @@ constexpr uint32_t RecordGuidHigh = 0x1C;
 constexpr uint32_t RecordName = 0x20;  // inline null-terminated string
 constexpr uint32_t RecordValid = 0x178; // byte: entry populated
 } // namespace nameStore
+
+namespace creatureNameStore {
+constexpr uint32_t LookupBase = 0x08; // sub_67EA30: sub_6F6020(this + 8)
+constexpr uint32_t HashBase = 0x1C; // this[7]
+constexpr uint32_t HashMask = 0x24; // this[9]
+constexpr uint32_t RecordKey = 0x00;
+constexpr uint32_t RecordName = 0x18;  // sub_67EA30 returns record + 0x18
+constexpr uint32_t RecordValid = 0x78; // byte: entry populated
+} // namespace creatureNameStore
 
 namespace teb {
 constexpr uint32_t TlsSlots = 0x2C;
@@ -87,6 +100,7 @@ constexpr uint32_t Power = 0x4C;
 constexpr uint32_t MaxHealth = 0x68;
 constexpr uint32_t MaxPower = 0x6C;
 constexpr uint32_t Level = 0xC0;
+constexpr uint32_t CreatureNameId = 0x114;
 } // namespace desc
 
 namespace movement {

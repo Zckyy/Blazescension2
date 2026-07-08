@@ -79,6 +79,8 @@ sources.
 | `0x7D07B0` | Target GUID low, high at `+4` |
 | `0x7D07D0` | Focus GUID low, high at `+4` |
 | `0x7D07A0` | Mouseover GUID low, high at `+4` |
+| `0x85D938` | Player name cache DB (`unk_C5D938`) |
+| `0x85DB58` | Creature name cache DB (`unk_C5DB58`) |
 
 ## Object, Descriptor, Movement Offsets
 
@@ -96,6 +98,7 @@ sources.
 | Descriptor `+0x68` | Max health |
 | Descriptor `+0x6C + 4 * powerType` | Max power |
 | Descriptor `+0xC0` | Level |
+| Descriptor `+0x114` | Creature display/name id used by creature-name DB |
 | Movement `+0x10` | World X |
 | Movement `+0x14` | World Y |
 | Movement `+0x18` | World Z |
@@ -160,10 +163,11 @@ compare for exact equality, since the mask is inherited/cumulative.
 A full hash-table walk is far more expensive than the four fixed GUID
 lookups (thousands of small reads instead of a handful), so
 `GameReader::scanNearbyUnits` runs on its own slow poll (`AppConfig::nearbyPollHz`,
-default 4 Hz) independent of the main `pollHz`, and results are cached
-between scans. Distance filtering happens during the walk itself (skip before
-the descriptor read, not after) to avoid the cost of resolving stats for
-units that will be discarded.
+default 4 Hz), and results are cached between scans. The core player, target,
+focus, mouseover, and camera snapshot is read once per rendered overlay frame.
+Distance filtering happens during the walk itself (skip before the descriptor
+read, not after) to avoid the cost of resolving stats for units that will be
+discarded.
 
 ## Unit Names
 
@@ -176,8 +180,13 @@ Player names live in a GUID-keyed name-cache DB at the static struct
 `unk_C5D938` (RVA `0x85D938`). The DB uses the **same bucket layout as the
 object manager** (`sub_6792E0` is structurally identical to `sub_4D4BB0`):
 
+Important: `UnitName` does not feed this lookup from the object-manager hash
+node GUID. In `sub_72A000`, the player path reads the name-cache GUID from
+`data = *(object + 0x08)`, then `guidLow = *(data + 0x00)` and
+`guidHigh = *(data + 0x04)`. The type mask still lives at `data + 0x08`.
+
 ```text
-db       = moduleBase + 0x85D938
+db       = moduleBase + 0x85D938 + 0x08
 hashBase = *(db + 0x1C)
 mask     = *(db + 0x24)
 bucket   = 12 * (guidLow & mask)
@@ -194,14 +203,20 @@ while entry != 0 and (entry & 1) == 0:
     entry = *(entry + delta + 4)
 ```
 
-`sub_67D770` returns `record + 0x20` (the inline name string) once the
-`+0x178` valid byte is set; `UnitName` pushes exactly that pointer to Lua.
-There is a parallel creature-name DB at `unk_C5DB58` keyed by
-`*(descriptor + 0x114)` with the name at `record + 0x18`, but the overlay
-uses the simpler object chain below for creatures instead.
+`sub_67D770` uses `unk_C5D938 + 0x08` as the hash lookup object, returns
+`record + 0x20` (the inline name string) once the `+0x178` valid byte is set,
+and `UnitName` pushes exactly that pointer to Lua. It may also provide a
+second string at `name + 0x34`.
 
 ### Creatures / NPCs
 
+`sub_72A000` first tries a creature-name DB at `unk_C5DB58` (RVA `0x85DB58`),
+keyed by `*(descriptor + 0x114)`. `sub_67EA30` uses `unk_C5DB58 + 0x08` as
+the hash lookup object. The DB bucket layout is the same as the object manager,
+but the record match is only `*(record + 0x00) == key`. `sub_67EA30` returns
+`record + 0x18` when `*(byte *)(record + 0x78)` is set.
+
+If the descriptor key is zero or the DB record is not available yet,
 `sub_72A000`'s creature fallback path reads the name straight off the object:
 
 ```asm
@@ -210,11 +225,12 @@ mov eax, [esi+5Ch]    ; +0x5C -> char*
 ```
 
 so `name = cstring at *(*(object + 0x964) + 0x5C)`. This is the widely-used
-external creature-name chain and avoids re-walking the creature-name DB.
+external creature-name chain.
 
 `GameReader::readUnitFromObject` picks the source by object type: units with
-the `Player` type bit (`0x10`) use the player name cache, everything else
-uses the `0x964` chain.
+the `Player` type bit (`0x10`) use the player name cache with the
+`*(object+0x08)` GUID source, everything else tries the creature DB and then
+falls back to the `0x964` chain.
 
 ## Camera
 

@@ -20,12 +20,14 @@ private:
     void drawScreenUnitBox(
         const Core::UnitSnapshot& unit,
         const Core::CameraSnapshot& camera,
-        const Core::AppConfig& config,
         const ProjectionBasis& basis);
     void drawWorldUnitBox(
         const Core::UnitSnapshot& unit,
         const Core::CameraSnapshot& camera,
-        const Core::AppConfig& config,
+        const ProjectionBasis& basis);
+    void drawUnitLabel(
+        const Core::UnitSnapshot& unit,
+        const Core::CameraSnapshot& camera,
         const ProjectionBasis& basis);
 };
 

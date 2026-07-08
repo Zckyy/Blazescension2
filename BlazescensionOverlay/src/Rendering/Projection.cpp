@@ -11,20 +11,28 @@ namespace {
 
 constexpr float kPi = 3.14159265358979323846f;
 
+enum class ProjectionMode {
+    YawX,
+    YawXInvertPitch,
+    YawY,
+    YawYInvertPitch,
+    YawNegX,
+    YawNegY,
+};
+
 struct BasisSpec {
     float yawOffset = 0.0f;
     float pitchSign = 1.0f;
 };
 
-BasisSpec basisSpec(Core::ProjectionMode mode) {
+BasisSpec basisSpec(ProjectionMode mode) {
     switch (mode) {
-    case Core::ProjectionMode::YawX: return { 0.0f, 1.0f };
-    case Core::ProjectionMode::YawXInvertPitch: return { 0.0f, -1.0f };
-    case Core::ProjectionMode::YawY: return { kPi * 0.5f, 1.0f };
-    case Core::ProjectionMode::YawYInvertPitch: return { kPi * 0.5f, -1.0f };
-    case Core::ProjectionMode::YawNegX: return { kPi, 1.0f };
-    case Core::ProjectionMode::YawNegY: return { -kPi * 0.5f, 1.0f };
-    case Core::ProjectionMode::Auto:
+    case ProjectionMode::YawX: return { 0.0f, 1.0f };
+    case ProjectionMode::YawXInvertPitch: return { 0.0f, -1.0f };
+    case ProjectionMode::YawY: return { kPi * 0.5f, 1.0f };
+    case ProjectionMode::YawYInvertPitch: return { kPi * 0.5f, -1.0f };
+    case ProjectionMode::YawNegX: return { kPi, 1.0f };
+    case ProjectionMode::YawNegY: return { -kPi * 0.5f, 1.0f };
     default: return { 0.0f, 1.0f };
     }
 }
@@ -34,7 +42,7 @@ bool projectWithMode(
     const Core::CameraSnapshot& camera,
     const Core::Vec2& viewport,
     Core::Vec2& out,
-    Core::ProjectionMode mode) {
+    ProjectionMode mode) {
     const BasisSpec spec = basisSpec(mode);
     const float yaw = camera.yaw + spec.yawOffset;
     const float cy = std::cos(yaw);
@@ -168,41 +176,11 @@ float pivotScore(const Core::Vec2& point, const Core::Vec2& viewport) {
     return dx * dx + dy * dy;
 }
 
-} // namespace
-
-bool worldToScreen(
-    const Core::Vec3& world,
-    const Core::CameraSnapshot& camera,
-    const Core::Vec2& viewport,
-    Core::Vec2& out,
-    Core::ProjectionMode mode) {
-    if (!camera.valid || viewport.x <= 1.0f || viewport.y <= 1.0f) {
-        return false;
-    }
-
-    if (mode == Core::ProjectionMode::Auto) {
-        mode = chooseProjectionMode(Core::GameSnapshot{}, viewport, Core::ProjectionMode::YawX);
-    }
-
-    return projectWithMode(world, camera, viewport, out, mode);
-}
-
-bool worldToScreen(
-    const Core::Vec3& world,
-    const Core::CameraSnapshot& camera,
-    const Core::Vec2& viewport,
-    const ProjectionBasis& basis,
-    Core::Vec2& out) {
-    return projectWithBasis(world, camera, viewport, basis, out);
-}
-
-Core::ProjectionMode chooseProjectionMode(
+ProjectionMode chooseProjectionMode(
     const Core::GameSnapshot& snapshot,
-    const Core::Vec2& viewport,
-    Core::ProjectionMode requestedMode) {
-    if (requestedMode != Core::ProjectionMode::Auto || !snapshot.camera.valid ||
-        !snapshot.player.valid || !snapshot.player.hasPosition) {
-        return requestedMode == Core::ProjectionMode::Auto ? Core::ProjectionMode::YawX : requestedMode;
+    const Core::Vec2& viewport) {
+    if (!snapshot.camera.valid || !snapshot.player.valid || !snapshot.player.hasPosition) {
+        return ProjectionMode::YawX;
     }
 
     const Core::Vec3 pivot{
@@ -210,18 +188,18 @@ Core::ProjectionMode chooseProjectionMode(
         snapshot.player.position.y,
         snapshot.player.position.z + 1.15f,
     };
-    const Core::ProjectionMode modes[] = {
-        Core::ProjectionMode::YawX,
-        Core::ProjectionMode::YawXInvertPitch,
-        Core::ProjectionMode::YawY,
-        Core::ProjectionMode::YawYInvertPitch,
-        Core::ProjectionMode::YawNegX,
-        Core::ProjectionMode::YawNegY,
+    const ProjectionMode modes[] = {
+        ProjectionMode::YawX,
+        ProjectionMode::YawXInvertPitch,
+        ProjectionMode::YawY,
+        ProjectionMode::YawYInvertPitch,
+        ProjectionMode::YawNegX,
+        ProjectionMode::YawNegY,
     };
 
-    Core::ProjectionMode bestMode = Core::ProjectionMode::YawX;
+    ProjectionMode bestMode = ProjectionMode::YawX;
     float bestScore = std::numeric_limits<float>::max();
-    for (Core::ProjectionMode mode : modes) {
+    for (ProjectionMode mode : modes) {
         Core::Vec2 screen{};
         if (!projectWithMode(pivot, snapshot.camera, viewport, screen, mode)) {
             continue;
@@ -237,32 +215,44 @@ Core::ProjectionMode chooseProjectionMode(
     return bestMode;
 }
 
-const char* projectionModeName(Core::ProjectionMode mode) {
-    switch (mode) {
-    case Core::ProjectionMode::Auto: return "Auto";
-    case Core::ProjectionMode::YawX: return "Yaw X";
-    case Core::ProjectionMode::YawXInvertPitch: return "Yaw X, inv pitch";
-    case Core::ProjectionMode::YawY: return "Yaw Y";
-    case Core::ProjectionMode::YawYInvertPitch: return "Yaw Y, inv pitch";
-    case Core::ProjectionMode::YawNegX: return "Yaw -X";
-    case Core::ProjectionMode::YawNegY: return "Yaw -Y";
-    default: return "Unknown";
-    }
+ProjectionBasis basisFromMode(const Core::GameSnapshot& snapshot, ProjectionMode mode) {
+    const BasisSpec spec = basisSpec(mode);
+    const float yaw = snapshot.camera.yaw + spec.yawOffset;
+    const float cy = std::cos(yaw);
+    const float sy = std::sin(yaw);
+    const float cp = std::cos(snapshot.camera.pitch);
+    const float sp = std::sin(snapshot.camera.pitch) * spec.pitchSign;
+    return ProjectionBasis{
+        Core::Vec3{ -sy, cy, 0.0f },
+        Core::Vec3{ -cy * sp, -sy * sp, cp },
+        Core::Vec3{ cy * cp, sy * cp, sp },
+        true,
+        false,
+    };
+}
+
+} // namespace
+
+bool worldToScreen(
+    const Core::Vec3& world,
+    const Core::CameraSnapshot& camera,
+    const Core::Vec2& viewport,
+    const ProjectionBasis& basis,
+    Core::Vec2& out) {
+    return projectWithBasis(world, camera, viewport, basis, out);
 }
 
 ProjectionBasis chooseProjectionBasis(
     const Core::GameSnapshot& snapshot,
-    const Core::Vec2& viewport,
-    Core::ProjectionMode requestedMode) {
+    const Core::Vec2& viewport) {
     if (!snapshot.camera.valid) {
         return ProjectionBasis{};
     }
 
-    if (requestedMode == Core::ProjectionMode::Auto && snapshot.camera.hasViewProj) {
+    if (snapshot.camera.hasViewProj) {
         ProjectionBasis basis{};
         basis.valid = true;
         basis.useViewProj = true;
-        basis.name = "view-proj";
 
         if (!snapshot.player.valid || !snapshot.player.hasPosition) {
             return basis;
@@ -281,23 +271,8 @@ ProjectionBasis chooseProjectionBasis(
         // to the heuristic search below.
     }
 
-    if (requestedMode != Core::ProjectionMode::Auto || !snapshot.camera.hasMatrix ||
-        !snapshot.player.valid || !snapshot.player.hasPosition) {
-        const Core::ProjectionMode mode = chooseProjectionMode(snapshot, viewport, requestedMode);
-        const BasisSpec spec = basisSpec(mode);
-        const float yaw = snapshot.camera.yaw + spec.yawOffset;
-        const float cy = std::cos(yaw);
-        const float sy = std::sin(yaw);
-        const float cp = std::cos(snapshot.camera.pitch);
-        const float sp = std::sin(snapshot.camera.pitch) * spec.pitchSign;
-        return ProjectionBasis{
-            Core::Vec3{ -sy, cy, 0.0f },
-            Core::Vec3{ -cy * sp, -sy * sp, cp },
-            Core::Vec3{ cy * cp, sy * cp, sp },
-            true,
-            false,
-            projectionModeName(mode),
-        };
+    if (!snapshot.camera.hasMatrix || !snapshot.player.valid || !snapshot.player.hasPosition) {
+        return basisFromMode(snapshot, chooseProjectionMode(snapshot, viewport));
     }
 
     const float* m = snapshot.camera.matrix;
@@ -338,7 +313,6 @@ ProjectionBasis chooseProjectionBasis(
                                 scale(axes[forwardIndex], forwardSign),
                                 true,
                                 false,
-                                "camera matrix",
                             };
 
                             Core::Vec2 screen{};
@@ -362,7 +336,7 @@ ProjectionBasis chooseProjectionBasis(
         return best;
     }
 
-    return chooseProjectionBasis(snapshot, viewport, Core::ProjectionMode::YawX);
+    return basisFromMode(snapshot, ProjectionMode::YawX);
 }
 
 } // namespace Rendering

@@ -12,6 +12,11 @@ namespace Rendering {
 
 namespace {
 
+constexpr float kBoxWorldWidth = 0.90f;
+constexpr float kBoxHeight = 2.35f;
+constexpr float kScreenBoxWidthRatio = 0.42f;
+constexpr float kLineThickness = 1.35f;
+
 ImU32 relationColor(Core::UnitRelation relation) {
     switch (relation) {
     case Core::UnitRelation::LocalPlayer: return IM_COL32(70, 210, 255, 235);
@@ -36,9 +41,8 @@ const char* relationLabel(Core::UnitRelation relation) {
     }
 }
 
-void formatUnitLabel(const Core::UnitSnapshot& unit, const Core::AppConfig& config, char* out, size_t outSize) {
-    const bool useName = config.showUnitNames && unit.hasName && unit.name[0] != '\0';
-    const char* label = useName ? unit.name : relationLabel(unit.relation);
+void formatUnitLabel(const Core::UnitSnapshot& unit, char* out, size_t outSize) {
+    const char* label = unit.hasName && unit.name[0] != '\0' ? unit.name : relationLabel(unit.relation);
     snprintf(out, outSize, "%s L%u", label, unit.level);
 }
 
@@ -74,58 +78,24 @@ void drawGroundCircle(
     }
 
     ImDrawList* draw = ImGui::GetForegroundDrawList();
-    const ImU32 shadow = IM_COL32(0, 0, 0, 190);
     const ImU32 line = relationColor(unit.relation);
     for (int i = 0; i < kSegments; ++i) {
         const int j = (i + 1) % kSegments;
         if (!ok[i] || !ok[j]) {
             continue;
         }
-        draw->AddLine(points[i], points[j], shadow, config.lineThickness + 2.2f);
-        draw->AddLine(points[i], points[j], line, config.lineThickness);
+        draw->AddLine(points[i], points[j], line, kLineThickness);
     }
-}
-
-void drawProjectionDebug(
-    const Core::GameSnapshot& snapshot,
-    const ProjectionBasis& basis,
-    const Core::Vec2& viewport) {
-    if (!snapshot.player.valid || !snapshot.player.hasPosition || !snapshot.camera.valid) {
-        return;
-    }
-
-    Core::Vec2 feet{};
-    Core::Vec2 chest{};
-    const Core::Vec3 chestWorld{
-        snapshot.player.position.x,
-        snapshot.player.position.y,
-        snapshot.player.position.z + 1.15f,
-    };
-    if (!worldToScreen(snapshot.player.position, snapshot.camera, viewport, basis, feet) ||
-        !worldToScreen(chestWorld, snapshot.camera, viewport, basis, chest)) {
-        return;
-    }
-
-    ImDrawList* draw = ImGui::GetForegroundDrawList();
-    const ImVec2 feetPoint{ feet.x, feet.y };
-    const ImVec2 chestPoint{ chest.x, chest.y };
-    const ImU32 color = IM_COL32(255, 220, 80, 230);
-    draw->AddCircleFilled(feetPoint, 4.0f, color, 16);
-    draw->AddCircle(chestPoint, 7.0f, color, 16, 1.5f);
-    draw->AddLine(ImVec2(chest.x - 10.0f, chest.y), ImVec2(chest.x + 10.0f, chest.y), color, 1.5f);
-    draw->AddLine(ImVec2(chest.x, chest.y - 10.0f), ImVec2(chest.x, chest.y + 10.0f), color, 1.5f);
-    draw->AddText(ImVec2(chest.x + 9.0f, chest.y - 11.0f), color, basis.name);
 }
 
 // Projects the 3D player->target segment and draws it as a single screen
 // line. A straight world-space segment projects to a straight screen line
 // under perspective, so connecting the two projected endpoints is exact.
-// The line runs from the top of the local player to the feet of the target.
+// The line runs from the local player's feet to the target's feet.
 void drawTargetLine(
     const Core::UnitSnapshot& player,
     const Core::UnitSnapshot& target,
     const Core::CameraSnapshot& camera,
-    const Core::AppConfig& config,
     const ProjectionBasis& basis,
     const Core::Vec2& viewport) {
     if (!player.valid || !player.hasPosition ||
@@ -133,7 +103,7 @@ void drawTargetLine(
         return;
     }
 
-    const Core::Vec3 from{ player.position.x, player.position.y, player.position.z + config.boxHeight };
+    const Core::Vec3 from{ player.position.x, player.position.y, player.position.z };
     const Core::Vec3 to{ target.position.x, target.position.y, target.position.z };
 
     Core::Vec2 a{};
@@ -146,10 +116,8 @@ void drawTargetLine(
     ImDrawList* draw = ImGui::GetForegroundDrawList();
     const ImVec2 pa{ a.x, a.y };
     const ImVec2 pb{ b.x, b.y };
-    const ImU32 shadow = IM_COL32(0, 0, 0, 190);
     const ImU32 line = relationColor(Core::UnitRelation::Target);
-    draw->AddLine(pa, pb, shadow, config.lineThickness + 2.2f);
-    draw->AddLine(pa, pb, line, config.lineThickness);
+    draw->AddLine(pa, pb, line, kLineThickness);
 }
 
 } // namespace
@@ -161,16 +129,22 @@ void SceneRenderer::draw(const Core::GameSnapshot& snapshot, const Core::AppConf
 
     const ImVec2 display = ImGui::GetIO().DisplaySize;
     const Core::Vec2 viewport{ display.x, display.y };
-    const ProjectionBasis basis = chooseProjectionBasis(snapshot, viewport, config.projectionMode);
+    const ProjectionBasis basis = chooseProjectionBasis(snapshot, viewport);
 
     if (config.showLocalPlayerBox) {
         drawUnitBox(snapshot.player, snapshot.camera, config, basis);
     }
+    if (config.showLocalPlayerName) {
+        drawUnitLabel(snapshot.player, snapshot.camera, basis);
+    }
     if (config.showTargetBox) {
         drawUnitBox(snapshot.target, snapshot.camera, config, basis);
     }
+    if (config.showTargetName) {
+        drawUnitLabel(snapshot.target, snapshot.camera, basis);
+    }
     if (config.showTargetLine) {
-        drawTargetLine(snapshot.player, snapshot.target, snapshot.camera, config, basis, viewport);
+        drawTargetLine(snapshot.player, snapshot.target, snapshot.camera, basis, viewport);
     }
     if (config.showLocalPlayerCircle) {
         drawGroundCircle(snapshot.player, snapshot.camera, config, basis, viewport);
@@ -181,12 +155,23 @@ void SceneRenderer::draw(const Core::GameSnapshot& snapshot, const Core::AppConf
     if (config.showFocusBox) {
         drawUnitBox(snapshot.focus, snapshot.camera, config, basis);
     }
+    if (config.showFocusName) {
+        drawUnitLabel(snapshot.focus, snapshot.camera, basis);
+    }
     if (config.showMouseoverBox) {
         drawUnitBox(snapshot.mouseover, snapshot.camera, config, basis);
+    }
+    if (config.showMouseoverName) {
+        drawUnitLabel(snapshot.mouseover, snapshot.camera, basis);
     }
     if (config.showNpcBoxes) {
         for (const Core::UnitSnapshot& npc : snapshot.nearbyNpcs) {
             drawUnitBox(npc, snapshot.camera, config, basis);
+        }
+    }
+    if (config.showNpcNames) {
+        for (const Core::UnitSnapshot& npc : snapshot.nearbyNpcs) {
+            drawUnitLabel(npc, snapshot.camera, basis);
         }
     }
     if (config.showOtherPlayerBoxes) {
@@ -194,8 +179,10 @@ void SceneRenderer::draw(const Core::GameSnapshot& snapshot, const Core::AppConf
             drawUnitBox(other, snapshot.camera, config, basis);
         }
     }
-    if (config.showProjectionDebug) {
-        drawProjectionDebug(snapshot, basis, viewport);
+    if (config.showOtherPlayerNames) {
+        for (const Core::UnitSnapshot& other : snapshot.nearbyPlayers) {
+            drawUnitLabel(other, snapshot.camera, basis);
+        }
     }
 }
 
@@ -204,17 +191,16 @@ void SceneRenderer::drawUnitBox(
     const Core::CameraSnapshot& camera,
     const Core::AppConfig& config,
     const ProjectionBasis& basis) {
-    if (config.boxDrawMode == Core::BoxDrawMode::World3D) {
-        drawWorldUnitBox(unit, camera, config, basis);
+    if (config.boxDrawMode == Core::BoxDrawMode::ThreeD) {
+        drawWorldUnitBox(unit, camera, basis);
     } else {
-        drawScreenUnitBox(unit, camera, config, basis);
+        drawScreenUnitBox(unit, camera, basis);
     }
 }
 
 void SceneRenderer::drawScreenUnitBox(
     const Core::UnitSnapshot& unit,
     const Core::CameraSnapshot& camera,
-    const Core::AppConfig& config,
     const ProjectionBasis& basis) {
     if (!unit.valid || !unit.hasPosition || !camera.valid) {
         return;
@@ -224,7 +210,7 @@ void SceneRenderer::drawScreenUnitBox(
     const ImVec2 display = ImGui::GetIO().DisplaySize;
     const Core::Vec2 viewport{ display.x, display.y };
 
-    const float height = config.boxHeight;
+    const float height = kBoxHeight;
     const Core::Vec3 c = unit.position;
     const Core::Vec3 feetWorld{ c.x, c.y, c.z };
     const Core::Vec3 headWorld{ c.x, c.y, c.z + height };
@@ -248,31 +234,19 @@ void SceneRenderer::drawScreenUnitBox(
         bottom = mid.y + boxHeightPx * 0.5f;
     }
 
-    const float widthRatio = std::clamp(config.screenBoxWidthRatio, 0.20f, 1.20f);
-    const float boxWidthPx = std::max(12.0f, boxHeightPx * widthRatio);
+    const float boxWidthPx = std::max(12.0f, boxHeightPx * kScreenBoxWidthRatio);
     const float centerX = mid.x;
     const ImVec2 min{ centerX - boxWidthPx * 0.5f, top };
     const ImVec2 max{ centerX + boxWidthPx * 0.5f, bottom };
 
-    const ImU32 shadow = IM_COL32(0, 0, 0, 190);
     const ImU32 line = relationColor(unit.relation);
-    draw->AddRect(ImVec2(min.x - 1.0f, min.y - 1.0f), ImVec2(max.x + 1.0f, max.y + 1.0f), shadow, 3.0f, 0, config.lineThickness + 2.2f);
-    draw->AddRect(min, max, line, 3.0f, 0, config.lineThickness);
+    draw->AddRect(min, max, line, 2.0f, 0, kLineThickness);
 
-    char text[96];
-    formatUnitLabel(unit, config, text, sizeof(text));
-    const ImVec2 textSize = ImGui::CalcTextSize(text);
-    const ImVec2 labelMin{ centerX - textSize.x * 0.5f - 5.0f, min.y - textSize.y - 6.0f };
-    const ImVec2 labelMax{ centerX + textSize.x * 0.5f + 5.0f, min.y - 2.0f };
-    draw->AddRectFilled(labelMin, labelMax, IM_COL32(8, 10, 14, 185), 4.0f);
-    draw->AddRect(labelMin, labelMax, line, 4.0f, 0, 1.0f);
-    draw->AddText(ImVec2(labelMin.x + 5.0f, labelMin.y + 2.0f), IM_COL32(245, 248, 255, 245), text);
 }
 
 void SceneRenderer::drawWorldUnitBox(
     const Core::UnitSnapshot& unit,
     const Core::CameraSnapshot& camera,
-    const Core::AppConfig& config,
     const ProjectionBasis& basis) {
     if (!unit.valid || !unit.hasPosition || !camera.valid) {
         return;
@@ -282,8 +256,8 @@ void SceneRenderer::drawWorldUnitBox(
     const ImVec2 display = ImGui::GetIO().DisplaySize;
     const Core::Vec2 viewport{ display.x, display.y };
 
-    const float halfWidth = config.boxWidth * 0.5f;
-    const float height = config.boxHeight;
+    const float halfWidth = kBoxWorldWidth * 0.5f;
+    const float height = kBoxHeight;
     const Core::Vec3 c = unit.position;
 
     const std::array<Core::Vec3, 8> corners = {
@@ -309,7 +283,6 @@ void SceneRenderer::drawWorldUnitBox(
         {0, 4}, {1, 5}, {2, 6}, {3, 7},
     };
 
-    const ImU32 shadow = IM_COL32(0, 0, 0, 190);
     const ImU32 line = relationColor(unit.relation);
     for (const auto& edge : edges) {
         if (!projected[edge[0]] || !projected[edge[1]]) {
@@ -318,20 +291,32 @@ void SceneRenderer::drawWorldUnitBox(
 
         const ImVec2 a{ screen[edge[0]].x, screen[edge[0]].y };
         const ImVec2 b{ screen[edge[1]].x, screen[edge[1]].y };
-        draw->AddLine(a, b, shadow, config.lineThickness + 2.2f);
-        draw->AddLine(a, b, line, config.lineThickness);
+        draw->AddLine(a, b, line, kLineThickness);
     }
 
+}
+
+void SceneRenderer::drawUnitLabel(
+    const Core::UnitSnapshot& unit,
+    const Core::CameraSnapshot& camera,
+    const ProjectionBasis& basis) {
+    if (!unit.valid || !unit.hasPosition || !camera.valid) {
+        return;
+    }
+
+    const ImVec2 display = ImGui::GetIO().DisplaySize;
+    const Core::Vec2 viewport{ display.x, display.y };
+    const Core::Vec3 c = unit.position;
+    const Core::Vec3 labelWorld{ c.x, c.y, c.z + kBoxHeight + 0.15f };
     Core::Vec2 labelPos{};
-    const Core::Vec3 labelWorld{ c.x, c.y, c.z + height + 0.15f };
     if (worldToScreen(labelWorld, camera, viewport, basis, labelPos)) {
+        ImDrawList* draw = ImGui::GetForegroundDrawList();
         char text[96];
-        formatUnitLabel(unit, config, text, sizeof(text));
+        formatUnitLabel(unit, text, sizeof(text));
         const ImVec2 textSize = ImGui::CalcTextSize(text);
         const ImVec2 min{ labelPos.x - textSize.x * 0.5f - 5.0f, labelPos.y - textSize.y - 4.0f };
         const ImVec2 max{ labelPos.x + textSize.x * 0.5f + 5.0f, labelPos.y + 3.0f };
         draw->AddRectFilled(min, max, IM_COL32(8, 10, 14, 180), 4.0f);
-        draw->AddRect(min, max, line, 4.0f, 0, 1.0f);
         draw->AddText(ImVec2(min.x + 5.0f, min.y + 2.0f), IM_COL32(245, 248, 255, 245), text);
     }
 }

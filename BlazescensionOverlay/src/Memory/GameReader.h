@@ -32,7 +32,7 @@ private:
     bool readUnitFromObject(uint32_t object, Core::UnitRelation relation, Core::UnitSnapshot& out);
     bool readCString(uint32_t address, char* out, size_t outSize);
     bool readPlayerName(Core::Guid64 guid, char* out, size_t outSize);
-    bool readNpcName(uint32_t object, char* out, size_t outSize);
+    bool readNpcName(uint32_t object, uint32_t descriptor, char* out, size_t outSize);
     void scanNearbyUnits(
         uint32_t curMgr,
         const Core::Vec3& origin,
@@ -49,12 +49,10 @@ private:
 
     // Nearby-unit enumeration walks the entire object-manager hash table, far
     // pricier than the fixed GUID lookups, so results are cached and only
-    // refreshed at config.nearbyPollHz regardless of how often readSnapshot
-    // is called.
+    // refreshed at config.nearbyPollHz.
     std::chrono::steady_clock::time_point m_lastNearbyScan{};
     std::vector<Core::UnitSnapshot> m_cachedNpcs;
     std::vector<Core::UnitSnapshot> m_cachedPlayers;
 };
 
 } // namespace Memory
-

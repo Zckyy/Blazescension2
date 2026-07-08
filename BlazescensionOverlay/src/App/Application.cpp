@@ -22,6 +22,31 @@ double nowSeconds() {
     return std::chrono::duration<double>(elapsed).count();
 }
 
+int monitorRefreshRate(HWND hwnd) {
+    int refreshHz = 0;
+    const HMONITOR monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+    MONITORINFOEXW info{};
+    info.cbSize = sizeof(info);
+    if (monitor && GetMonitorInfoW(monitor, &info)) {
+        DEVMODEW mode{};
+        mode.dmSize = sizeof(mode);
+        if (EnumDisplaySettingsW(info.szDevice, ENUM_CURRENT_SETTINGS, &mode) &&
+            mode.dmDisplayFrequency > 1) {
+            refreshHz = static_cast<int>(mode.dmDisplayFrequency);
+        }
+    }
+
+    if (refreshHz <= 1) {
+        HDC dc = GetDC(hwnd);
+        if (dc) {
+            refreshHz = GetDeviceCaps(dc, VREFRESH);
+            ReleaseDC(hwnd, dc);
+        }
+    }
+
+    return std::clamp(refreshHz > 1 ? refreshHz : 60, 30, 360);
+}
+
 } // namespace
 
 int Application::run(HINSTANCE instance) {
@@ -34,7 +59,6 @@ int Application::run(HINSTANCE instance) {
     // badly; 1 ms resolution keeps the frame cap accurate.
     timeBeginPeriod(1);
     m_lastFrameSeconds = nowSeconds();
-    m_lastSnapshotSeconds = 0.0;
 
     bool running = true;
     while (running) {
@@ -43,14 +67,13 @@ int Application::run(HINSTANCE instance) {
             break;
         }
 
-        updateSnapshot();
+        m_snapshot = m_reader.readSnapshot(m_config);
         updateGameWindow();
         m_overlay.setMenuOpen(m_config.showMenu);
         m_overlay.setStreamProof(m_config.streamProof);
 
         m_overlay.beginFrame();
         m_sceneRenderer.draw(m_snapshot, m_config);
-        UI::drawStatusPanel(m_config, m_snapshot);
         if (m_config.showMenu) {
             UI::drawMenu(m_config, m_snapshot);
         }
@@ -81,17 +104,6 @@ bool Application::handleHotkeys() {
     const bool panicKey = (GetAsyncKeyState(VK_DELETE) & 0x8000) != 0;
 
     return !exitChord && !panicKey;
-}
-
-void Application::updateSnapshot() {
-    const double now = nowSeconds();
-    const int pollHz = std::clamp(m_config.pollHz, 1, 120);
-    const double interval = 1.0 / static_cast<double>(pollHz);
-
-    if (now - m_lastSnapshotSeconds >= interval) {
-        m_snapshot = m_reader.readSnapshot(m_config);
-        m_lastSnapshotSeconds = now;
-    }
 }
 
 void Application::updateGameWindow() {
@@ -128,7 +140,8 @@ void Application::updateGameWindow() {
 }
 
 void Application::capFrameRate() {
-    const int fps = std::clamp(m_config.overlayFps, 30, 360);
+    const HWND syncWindow = m_gameWindow && IsWindow(m_gameWindow) ? m_gameWindow : m_overlay.hwnd();
+    const int fps = monitorRefreshRate(syncWindow);
     const double target = 1.0 / static_cast<double>(fps);
     const double now = nowSeconds();
     const double elapsed = now - m_lastFrameSeconds;
@@ -140,4 +153,3 @@ void Application::capFrameRate() {
 }
 
 } // namespace App
-

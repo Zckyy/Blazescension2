@@ -17,7 +17,6 @@ public:
 private:
     bool handleHotkeys();
     void updateGameWindow();
-    void updateSnapshot();
     void capFrameRate();
 
     Core::AppConfig m_config{};
@@ -29,10 +28,8 @@ private:
     RECT m_lastWindowRect{};
     bool m_haveWindowRect = false;
     bool m_prevInsertDown = false;
-    double m_lastSnapshotSeconds = 0.0;
     double m_lastFrameSeconds = 0.0;
     double m_lastWindowSearchSeconds = 0.0;
 };
 
 } // namespace App
-
