@@ -4,30 +4,37 @@ project(PlayerInfoOverlay LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Fetch Dear ImGui (no separate install needed).
+# deadcell-gui-2 carries the shadow-enabled Dear ImGui revision that its
+# renderer is built around.  We only consume its vendored ImGui sources here;
+# the upstream GUI controls depend on the original project's game-specific
+# framework and are not a standalone CMake target.
 include(FetchContent)
 FetchContent_Declare(
-    imgui
-    GIT_REPOSITORY https://github.com/ocornut/imgui.git
-    GIT_TAG        v1.91.6
+    deadcell_gui
+    GIT_REPOSITORY https://github.com/EternityX/deadcell-gui-2.git
+    GIT_TAG        590f18d
 )
-FetchContent_MakeAvailable(imgui)
+FetchContent_GetProperties(deadcell_gui)
+if (NOT deadcell_gui_POPULATED)
+    FetchContent_Populate(deadcell_gui)
+endif()
+
+set(DEADCELL_IMGUI_DIR ${deadcell_gui_SOURCE_DIR}/vendor/imgui)
 
 add_executable(PlayerInfoOverlay WIN32
     src/main.cpp
     src/GameReader.cpp
-    ${imgui_SOURCE_DIR}/imgui.cpp
-    ${imgui_SOURCE_DIR}/imgui_draw.cpp
-    ${imgui_SOURCE_DIR}/imgui_tables.cpp
-    ${imgui_SOURCE_DIR}/imgui_widgets.cpp
-    ${imgui_SOURCE_DIR}/backends/imgui_impl_win32.cpp
-    ${imgui_SOURCE_DIR}/backends/imgui_impl_dx11.cpp
+    ${DEADCELL_IMGUI_DIR}/imgui.cpp
+    ${DEADCELL_IMGUI_DIR}/imgui_draw.cpp
+    ${DEADCELL_IMGUI_DIR}/imgui_tables.cpp
+    ${DEADCELL_IMGUI_DIR}/imgui_widgets.cpp
+    ${DEADCELL_IMGUI_DIR}/imgui_impl_win32.cpp
+    ${DEADCELL_IMGUI_DIR}/imgui_impl_dx11.cpp
 )
 
 target_include_directories(PlayerInfoOverlay PRIVATE
     src
-    ${imgui_SOURCE_DIR}
-    ${imgui_SOURCE_DIR}/backends
+    ${DEADCELL_IMGUI_DIR}
 )
 
 target_link_libraries(PlayerInfoOverlay PRIVATE d3d11 dxgi d3dcompiler advapi32 dwmapi)

@@ -1,6 +1,6 @@
 # Ascension Player Info Overlay
 
-A transparent, click-through **Dear ImGui (Win32 + DirectX 11)** overlay that
+A transparent, click-through **deadcell-gui-2 / Dear ImGui (Win32 + DirectX 11)** overlay that
 draws on top of a running `Ascension.exe` and displays the local player's live
 stats. Toggle the menu with **INSERT**.
 
@@ -14,6 +14,16 @@ Displays:
 
 It is **read-only** — it only uses `ReadProcessMemory`. It never writes to the
 game's memory.
+
+## UI layer
+
+The overlay uses the shadow-enabled Dear ImGui revision vendored by
+[EternityX/deadcell-gui-2](https://github.com/EternityX/deadcell-gui-2). Its
+rounded panel, window chrome, and drop shadow are rendered with the fork's
+shadow draw-list primitives. The memory reader and transparent Win32/DX11
+window remain external and read-only; the upstream repository's larger
+event/layout framework is coupled to its original host application, so this
+standalone port uses its renderer primitives directly.
 
 ## How it works
 
@@ -40,7 +50,7 @@ as the game does.
 
 ## Build
 
-Requires CMake ≥ 3.16 and Visual Studio (MSVC). Dear ImGui is fetched
+Requires CMake ≥ 3.16 and Visual Studio (MSVC). deadcell-gui-2 is fetched
 automatically via CMake `FetchContent`.
 
 ```powershell

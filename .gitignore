@@ -9,6 +9,8 @@
 
 # CMake build output / vendored fetched deps
 build/
+build-*/
+cmake-build-*/
 out/
 
 # Common MSVC/CMake noise

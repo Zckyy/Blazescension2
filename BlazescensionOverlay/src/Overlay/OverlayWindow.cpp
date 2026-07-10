@@ -5,6 +5,7 @@
 #include "imgui_impl_win32.h"
 
 #include <algorithm>
+#include <cstdio>
 #include <iterator>
 
 #pragma comment(lib, "dcomp.lib")
@@ -15,6 +16,39 @@ namespace Overlay {
 
 namespace {
 constexpr const wchar_t* kWindowClass = L"BlazescensionOverlayWindow";
+
+void loadModernUiFont(ImGuiIO& io) {
+    char windowsDirectory[MAX_PATH]{};
+    if (!GetWindowsDirectoryA(windowsDirectory, MAX_PATH)) {
+        io.Fonts->AddFontDefault();
+        return;
+    }
+
+    constexpr const char* candidates[] = {
+        "SegUIVar.ttf", // Segoe UI Variable on Windows 11
+        "segoeui.ttf",  // Segoe UI fallback on Windows 10
+    };
+
+    ImFontConfig config{};
+    config.OversampleH = 2;
+    config.OversampleV = 2;
+    config.PixelSnapH = false;
+
+    for (const char* filename : candidates) {
+        char path[MAX_PATH]{};
+        std::snprintf(path, sizeof(path), "%s\\Fonts\\%s", windowsDirectory, filename);
+        if (GetFileAttributesA(path) == INVALID_FILE_ATTRIBUTES) {
+            continue;
+        }
+
+        if (ImFont* font = io.Fonts->AddFontFromFileTTF(path, 15.0f, &config)) {
+            io.FontDefault = font;
+            return;
+        }
+    }
+
+    io.Fonts->AddFontDefault();
+}
 }
 
 OverlayWindow::~OverlayWindow() {
@@ -66,6 +100,7 @@ bool OverlayWindow::initialize(HINSTANCE instance) {
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
     io.IniFilename = nullptr;
+    loadModernUiFont(io);
 
     ImGui_ImplWin32_Init(m_hwnd);
     ImGui_ImplDX11_Init(m_device.Get(), m_context.Get());

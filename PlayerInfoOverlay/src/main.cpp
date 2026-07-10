@@ -111,6 +111,57 @@ static void StatBar(const char* label, float cur, float max, ImVec4 color) {
     ImGui::PopStyleColor();
 }
 
+static void applyDeadcellStyle() {
+    ImGuiStyle& style = ImGui::GetStyle();
+    style.WindowRounding = 6.0f;
+    style.ChildRounding = 4.0f;
+    style.FrameRounding = 4.0f;
+    style.PopupRounding = 4.0f;
+    style.ScrollbarRounding = 4.0f;
+    style.WindowBorderSize = 1.0f;
+    style.FrameBorderSize = 1.0f;
+    style.WindowPadding = ImVec2(16.0f, 14.0f);
+    style.ItemSpacing = ImVec2(8.0f, 8.0f);
+
+    // These fields and the shadow primitive are provided by deadcell-gui-2's
+    // shadows branch of Dear ImGui.
+    style.WindowShadowSize = 18.0f;
+    style.WindowShadowOffsetDist = 2.0f;
+    style.WindowShadowOffsetAngle = 3.14159265358979323846f * 0.5f;
+
+    ImVec4* colors = style.Colors;
+    colors[ImGuiCol_WindowBg] = ImVec4(0.055f, 0.065f, 0.085f, 0.97f);
+    colors[ImGuiCol_Border] = ImVec4(0.26f, 0.31f, 0.37f, 0.95f);
+    colors[ImGuiCol_FrameBg] = ImVec4(0.10f, 0.12f, 0.16f, 0.98f);
+    colors[ImGuiCol_FrameBgHovered] = ImVec4(0.14f, 0.17f, 0.22f, 0.98f);
+    colors[ImGuiCol_PlotHistogram] = ImVec4(0.82f, 0.45f, 0.55f, 1.0f);
+    colors[ImGuiCol_Button] = ImVec4(0.12f, 0.14f, 0.19f, 1.0f);
+    colors[ImGuiCol_ButtonHovered] = ImVec4(0.17f, 0.20f, 0.27f, 1.0f);
+    colors[ImGuiCol_ButtonActive] = ImVec4(0.22f, 0.25f, 0.32f, 1.0f);
+}
+
+static void drawDeadcellWindowChrome() {
+    ImDrawList* draw = ImGui::GetWindowDrawList();
+    const ImVec2 pos = ImGui::GetWindowPos();
+    const ImVec2 size = ImGui::GetWindowSize();
+    const ImVec2 max = ImVec2(pos.x + size.x, pos.y + size.y);
+
+    // This is the shadow primitive exposed by the deadcell-gui-2 ImGui fork.
+    // The cut-out flag leaves the actual panel contents crisp above the glow.
+    draw->AddShadowRect(pos, max, IM_COL32(0, 0, 0, 185), 18.0f,
+                        ImVec2(0.0f, 2.0f),
+                        ImDrawFlags_ShadowCutOutShapeBackground,
+                        ImGui::GetStyle().WindowRounding);
+
+    const float headerHeight = 34.0f;
+    draw->AddRectFilled(pos, ImVec2(max.x, pos.y + headerHeight),
+                        IM_COL32(56, 35, 51, 230), ImGui::GetStyle().WindowRounding,
+                        ImDrawFlags_RoundCornersTop);
+    draw->AddLine(ImVec2(pos.x, pos.y + headerHeight),
+                  ImVec2(max.x, pos.y + headerHeight),
+                  IM_COL32(190, 102, 130, 160), 1.0f);
+}
+
 static float dot(const Vec3& a, const Vec3& b) {
     return a.x * b.x + a.y * b.y + a.z * b.z;
 }
@@ -227,7 +278,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, LPWSTR, int) {
     ImGuiIO& io = ImGui::GetIO(); (void)io;
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
     ImGui::StyleColorsDark();
-    ImGui::GetStyle().WindowRounding = 6.0f;
+    applyDeadcellStyle();
     ImGui_ImplWin32_Init(hwnd);
     ImGui_ImplDX11_Init(g_pd3dDevice, g_pd3dDeviceContext);
 
@@ -310,6 +361,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, LPWSTR, int) {
             ImGui::SetNextWindowSize(ImVec2(300, 0), ImGuiCond_FirstUseEver);
             ImGui::Begin("Ascension - Player Info", &menuVisible,
                          ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize);
+            drawDeadcellWindowChrome();
 
             if (!game.attached()) {
                 ImGui::TextColored(ImVec4(1, 0.5f, 0.3f, 1), "Waiting for Ascension.exe ...");
